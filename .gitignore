@@ -4,3 +4,5 @@ lib/*
 
 !*.gitkeep
 main.js
+meta.json
+demo-vault/.obsidian/workspace
