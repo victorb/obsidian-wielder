@@ -1,0 +1,10 @@
+{
+  "obsidian-sample-plugin:insert-clojure-eval-block": [
+    {
+      "modifiers": [
+        "Mod"
+      ],
+      "key": "J"
+    }
+  ]
+}

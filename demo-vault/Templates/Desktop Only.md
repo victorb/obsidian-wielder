@@ -1,0 +1,2 @@
+> [!WARNING]
+> This document uses variables and functions that are only available on Obsidian Desktop, not on a published Obsidian site. If you view this page on the web, you'll see errors. Try loading the same document in Obsidian Desktop to see the full functionality.
