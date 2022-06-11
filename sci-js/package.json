@@ -1,0 +1,15 @@
+{
+  "name": "sci-js-api",
+  "version": "0.1.0",
+  "description": "SCI (Small Clojure Interpreter) in JS-land",
+  "main": "dist/sci.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Victor Bjelkholm",
+  "license": "MIT",
+  "devDependencies": {
+    "react": "^17.0.2",
+    "react-dom": "^17.0.2"
+  }
+}

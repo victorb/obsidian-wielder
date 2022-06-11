@@ -1,0 +1,44 @@
+{:deps true
+ :builds
+ {:sci-js
+  {:target :node-library
+   :output-to "dist/sci.js"
+   :exports {:init sci.api/init
+             :eval sci.api/evalString
+             :renderReagent sci.api/renderReagent
+             :ppStr sci.api/ppStr}
+   :compiler-options
+   {:optimizations :simple
+    ;; :optimizations :advanced
+    :parallel-build true}
+   ;; :build-hooks
+   ;;  [(shadow.cljs.build-report/hook
+   ;;     {:output-to "dist/report.html"})]}
+   :modules
+   {:sci {:entries [sci.core]}}}
+  ;; :sci-js-browser
+  ;; {:target :npm-module
+  ;;  :output-to "dist/sci.browser.js"
+  ;;  :output-dir "dist/browser"
+  ;;  :exports {:init sci.api/init
+  ;;            :eval sci.api/evalString
+  ;;            :renderReagent sci.api/renderReagent
+  ;;            :ppStr sci.api/ppStr}
+  ;;  :compiler-options
+  ;;  {:optimizations :simple
+  ;;   :parallel-build true}
+  ;;  :modules
+  ;;  {:sci {:entries [sci.core]}}}
+  :cljs-core
+  {:target :node-library
+   :output-to "dist/cljs.core.prod.js"
+   :exports {:keyword cljs.core/keyword
+             :symbol cljs.core/symbol
+             :jsToClj cljs.core/js->clj
+             :str cljs.core/str
+             :array_map cljs.core/array-map
+             :pprint cljs.pprint/pprint}
+   :compiler-options
+   {:optimizations :advanced}
+   :modules
+   {:core {:entries [clojure.core]}}}}}
