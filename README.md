@@ -1,6 +1,10 @@
 ## Obsidian Wielder
 > Clojure inside your Obsidian documents!
 
+![hippo](https://media3.giphy.com/media/aUovxH8Vf9qDu/giphy.gif)
+
+[GitHub Pages](https://pages.github.com/)
+
 This Obsidian plugin allows you to use the full power of Clojure directly inside of your documents in Obsidian! If you view documents with code blocks marked as `clojure` in the view-mode of Obsidian, this plugin will automatically run the code you have specified inside the block.
 
 The plugin goes block by block for your entire document, so you can build pipelines of data with descriptive text in-between, and slowly build up to the final data and then present it. All directly in your documents without doing anything outside of Obsidian.
