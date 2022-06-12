@@ -1,3 +1,6 @@
 {
-  "legacyEditor": false
+  "legacyEditor": false,
+  "showLineNumber": true,
+  "tabSize": 2,
+  "useTab": false
 }
