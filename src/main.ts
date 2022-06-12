@@ -72,6 +72,26 @@ export default class ObsidianClojure extends Plugin {
       this.killIntervalsAndEval();
     }, 100)
 
+    this.addCommand({
+      id: 'insert-clojure-code-block',
+      name: 'Insert Clojure Code Block',
+      checkCallback: (checking: boolean) => {
+        let leaf = this.app.workspace.activeLeaf
+        if (leaf) {
+          if (!checking) {
+            const doc = app.workspace.activeLeaf.view.editor.getDoc()
+            doc.replaceSelection(clojureTemplate)
+            const currentLine = doc.getCursor().line
+            const newLine = currentLine - 2
+            doc.setCursor({line: newLine, ch: 0})
+          }
+          return true;
+        }
+        return false;
+      }
+    });
+
+
     this.addSettingTab(new ObsidianClojureSettingTab(this.app, this));
   }
 
@@ -83,6 +103,13 @@ export default class ObsidianClojure extends Plugin {
     await this.saveData(this.settings);
   }
 }
+
+const clojureTemplate =
+`\`\`\`clojure
+
+\`\`\`
+`
+
 
 class ObsidianClojureSettingTab extends PluginSettingTab {
   plugin: ObsidianClojure;
