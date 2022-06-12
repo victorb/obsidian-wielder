@@ -65,12 +65,12 @@ export default class ObsidianClojure extends Plugin {
         this.app.workspace.on(eventName, () => {
           window.setTimeout(() => {
             this.killIntervalsAndEval();
-          }, 0)
+          }, 100)
         })
       })
 
       this.killIntervalsAndEval();
-    }, 0)
+    }, 100)
 
     this.addSettingTab(new ObsidianClojureSettingTab(this.app, this));
   }
