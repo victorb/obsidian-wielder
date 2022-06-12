@@ -1,4 +1,4 @@
-By default, obsidian-clojure should return the value
+By default, Wielder should return the value
 
 ```clojure
 (+ 1 2)

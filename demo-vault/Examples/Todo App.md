@@ -1,4 +1,4 @@
-This is a mini-application made with obsidian-clojure.
+This is a mini-application made with Wielder.
 
 It uses files stored in the sub-directory `Todos` as a database.
 

@@ -1,6 +1,6 @@
 ![[WielderDemo.mp4]]
 
-If you're new, please see [[01-Introduction]] for an introduction to how obsidian-clojure works.
+If you're new, please see [[01-Introduction]] for an introduction to how Wielder works.
 
 If you're looking for some examples on how to achieve things, checkout the [[Examples]] directory, starting with [[Async Code]]
 

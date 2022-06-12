@@ -1,7 +1,7 @@
 ![[Desktop Only]]
 
 
-As you saw in the previous tutorial, we have access to everything Obsidian inside obsidian-clojure. So you can also call functions from Obsidian as you wish.
+As you saw in the previous tutorial, we have access to everything Obsidian inside Wielder. So you can also call functions from Obsidian as you wish.
 
 Lets take a look at what kind of commands we have available to us:
 

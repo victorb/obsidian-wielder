@@ -1,4 +1,4 @@
-Welcome to obsidian-clojure, the plugin that enables Obsidian to seamlessly embed Clojure code via SCI, enabling you to do all kinds of fun stuff, as long as you can program it!
+Welcome to Wielder, the plugin that enables Obsidian to seamlessly embed Clojure code via SCI, enabling you to do all kinds of fun stuff, as long as you can program it!
 
 As soon as you installed the plugin, you'll be able to execute any Clojure blocks in your documents.
 
@@ -45,7 +45,7 @@ Sometimes you just want to output from text that looks like regular text though,
 (*renderText "I do love my some Clojure in the morning.")
 ```
 
-The text under the above code-block is visible in the Obsidian "Read" view, but not in the "Edit" view, because it's added by obsidian-clojure.
+The text under the above code-block is visible in the Obsidian "Read" view, but not in the "Edit" view, because it's added by Wielder.
 
 Sometimes you want to output raw HTML which is also possible.
 
@@ -55,7 +55,7 @@ Sometimes you want to output raw HTML which is also possible.
 
 Just like any other Obsidian button, but you can generate it dynamically. Note: It won't do anything when you click on it, unless we program it to.
 
-If we want to add interactivity to our Obsidian documents, we can use Reagent, which we can also render with obsidian-clojure. Reagent is a React-wrapper written in Clojure, so if you know how to use React, it should be easy to grok.
+If we want to add interactivity to our Obsidian documents, we can use Reagent, which we can also render with Wielder. Reagent is a React-wrapper written in Clojure, so if you know how to use React, it should be easy to grok.
 
 ```clojure
 (def my-name "Victor")
@@ -104,6 +104,6 @@ With Reagent, we can also have application state that we can change inside the R
 
 ---
 
-This was just a short introduction to the functionality of what you can achieve with obsidian-clojure. Continue with the rest of the tutorial files to see what else you can do!
+This was just a short introduction to the functionality of what you can achieve with Wielder. Continue with the rest of the tutorial files to see what else you can do!
 
 Next Page: [[02-Installation]]

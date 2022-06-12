@@ -1,6 +1,6 @@
 This setting is useful if you already have a bunch of Clojure code in blocks set to `clojure` that you don't want to normally evaluate.
 
-You can set this value to `clojure-eval` for example, and only if you mark a code-block with `clojure-eval` instead of `clojure`, will it be evaluated by obsidian-clojure.
+You can set this value to `clojure-eval` for example, and only if you mark a code-block with `clojure-eval` instead of `clojure`, will it be evaluated by Wielder.
 
 First block here is defined to be `clojure`
 
