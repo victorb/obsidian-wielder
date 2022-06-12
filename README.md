@@ -1,9 +1,9 @@
 ## Obsidian Wielder
 > Clojure inside your Obsidian documents!
 
-![hippo](https://media3.giphy.com/media/aUovxH8Vf9qDu/giphy.gif)
-
-[GitHub Pages](https://pages.github.com/)
+<a href="/demo-vault/Attachments/WielderDemo.mp4">
+  <img alt="Demonstration Video" src="/demo-vault/Attachments/WielderDemo.gif"/>
+</a>
 
 This Obsidian plugin allows you to use the full power of Clojure directly inside of your documents in Obsidian! If you view documents with code blocks marked as `clojure` in the view-mode of Obsidian, this plugin will automatically run the code you have specified inside the block.
 
