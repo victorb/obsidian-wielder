@@ -44,6 +44,7 @@ esbuild.build({
     ...builtins],
   format: 'cjs',
   watch: !prod,
+  define: {"global": "window"},
   target: 'es2016',
   logLevel: "info",
   sourcemap: prod ? false : 'inline',
