@@ -1,22 +1,35 @@
-import { App, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import {
+  App,
+  Plugin,
+  PluginSettingTab,
+  Setting,
+  Editor
+} from 'obsidian';
 
 import {initialize, evaluate} from './evaluator.ts'
 
 interface ObsidianClojureSettings {
-  mySetting: string;
+  fullErrors: boolean
+  blockLanguage: String
 }
 
 const DEFAULT_SETTINGS: ObsidianClojureSettings = {
-  mySetting: 'default',
   fullErrors: false,
   blockLanguage: 'clojure',
+}
+
+const clojureTemplate = (toBeWrapped) => {
+  toBeWrapped = toBeWrapped || ''
+return `\`\`\`clojure
+${toBeWrapped}
+\`\`\`
+`
 }
 
 export default class ObsidianClojure extends Plugin {
   settings: ObsidianClojureSettings;
 
   async evalAll(sciCtx) {
-
     this.app.workspace.iterateAllLeaves((leaf) => {
       if (leaf.getViewState().type === "markdown" && leaf.getViewState().state.mode === "preview") {
         const containerEl = leaf.containerEl;
@@ -75,19 +88,21 @@ export default class ObsidianClojure extends Plugin {
     this.addCommand({
       id: 'insert-clojure-code-block',
       name: 'Insert Clojure Code Block',
-      checkCallback: (checking: boolean) => {
-        let leaf = this.app.workspace.activeLeaf
-        if (leaf) {
-          if (!checking) {
-            const doc = app.workspace.activeLeaf.view.editor.getDoc()
-            doc.replaceSelection(clojureTemplate)
-            const currentLine = doc.getCursor().line
-            const newLine = currentLine - 2
-            doc.setCursor({line: newLine, ch: 0})
-          }
-          return true;
+      editorCallback: (editor: Editor) => {
+        // If we have something selected, wrap it
+        if (editor.somethingSelected()) {
+          const selectedText = editor.getSelection()
+          const textToInsert = clojureTemplate(selectedText)
+          const lines = textToInsert.split('\n').length
+          console.log(textToInsert, lines)
+          editor.replaceSelection(textToInsert)
+        } else {
+          editor.replaceSelection(clojureTemplate())
+          const currentPos = editor.getCursor()
+          const currentLine = currentPos.line
+          const newLine = currentLine - 2
+          editor.setCursor({line: newLine, ch: 0})
         }
-        return false;
       }
     });
 
@@ -103,13 +118,6 @@ export default class ObsidianClojure extends Plugin {
     await this.saveData(this.settings);
   }
 }
-
-const clojureTemplate =
-`\`\`\`clojure
-
-\`\`\`
-`
-
 
 class ObsidianClojureSettingTab extends PluginSettingTab {
   plugin: ObsidianClojure;
