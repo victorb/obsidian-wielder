@@ -30,6 +30,11 @@ ${toBeWrapped}
 export default class ObsidianClojure extends Plugin {
   settings: ObsidianClojureSettings;
 
+  eventsToListenTo: string[];
+
+  // TODO need to get rid of this hack
+  defaultTimeout: number;
+
   async evalAll(sciCtx) {
     this.app.workspace.iterateAllLeaves((leaf) => {
       if (leaf.getViewState().type === "markdown" && leaf.getViewState().state.mode === "preview") {
@@ -53,41 +58,42 @@ export default class ObsidianClojure extends Plugin {
     this.evalAll(this.sciCtx)
   }
 
+  handleRenderFromEvent() {
+    window.setTimeout(() => {
+      this.killIntervalsAndEval();
+    }, this.defaultWaitTimeout)
+  }
+
+  customSetInterval(func, interval_ms) {
+    const intervalID = window.setInterval(func, interval_ms)
+    this.registerInterval(intervalID)
+    this.activeIntervals.push(intervalID)
+  }
+
   async onload() {
     await this.loadSettings();
 
-    const originalSetInterval = window.setInterval;
+    this.eventsToListenTo = [
+      'editor-change',
+      'file-open',
+      'layout-change',
+      'active-leaf-change',
+    ];
+    this.defaultWaitTimeout = 100;
     this.activeIntervals = [];
 
-    const customSetInterval = (func, interval_ms) => {
-      const intervalID = originalSetInterval(func, interval_ms)
-      this.activeIntervals.push(intervalID)
-    }
-
-
-    window.setIntervalTracked = customSetInterval;
+    window.setIntervalTracked = this.customSetInterval.bind(this);
 
     this.sciCtx = initialize(window)
 
+    this.eventsToListenTo.forEach((eventName) => {
+      const eventRef = this.app.workspace.on(eventName, this.handleRenderFromEvent.bind(this))
+      this.registerEvent(eventRef);
+    })
+
     // TODO Figure out how to wait for document to finalize initalization
-    setTimeout(() => {
-      const eventsToListenTo = [
-        'editor-change',
-        'file-open',
-        'layout-change',
-        'active-leaf-change',
-      ]
-
-      eventsToListenTo.forEach((eventName) => {
-        this.app.workspace.on(eventName, () => {
-          window.setTimeout(() => {
-            this.killIntervalsAndEval();
-          }, 100)
-        })
-      })
-
-      this.killIntervalsAndEval();
-    }, 100)
+    // Initial load of plugin should be considered an "event" in itself
+    this.handleRenderFromEvent()
 
     this.addCommand({
       id: 'insert-clojure-code-block',
@@ -112,6 +118,12 @@ export default class ObsidianClojure extends Plugin {
 
 
     this.addSettingTab(new ObsidianClojureSettingTab(this.app, this));
+  }
+
+  async onunload() {
+    // Clean up our intervals + the function we expose
+    this.killCustomIntervals();
+    window.setIntervalTracked = undefined;
   }
 
   async loadSettings() {
