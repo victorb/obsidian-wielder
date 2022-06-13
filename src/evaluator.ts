@@ -4,8 +4,21 @@ export function initialize(global_object) {
   return sci.init(global_object)
 }
 
-export function evaluate(sciCtx, container, settings) {
+// Receives a string with HTML, and returns a sanitized HTMLElement
+function defaultSanitize(str) {
+  const sanitizer = new Sanitizer();
+  return sanitizer.sanitizeFor('div', str);
+}
+
+export function evaluate(sciCtx, container, settings, opts) {
   const codeElements = container.querySelectorAll('code')
+
+  let sanitizer = null;
+  if (opts && opts.sanitizer) {
+    sanitizer = opts.sanitizer
+  } else {
+    sanitizer = defaultSanitize;
+  }
 
   for (const codeElement of codeElements) {
 
@@ -56,6 +69,11 @@ export function evaluate(sciCtx, container, settings) {
         $results.innerText = info;
       },
       onRenderHTML: (info) => {
+        isSpecialRender = true;
+        $results.appendChild(sanitizer(info));
+      },
+      // TODO not implemented on the SCI side yet, not sure we need or not
+      onRenderUnsafeHTML: (info) => {
         isSpecialRender = true;
         $results.innerHTML = info;
       },

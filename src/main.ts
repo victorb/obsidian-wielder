@@ -3,7 +3,8 @@ import {
   Plugin,
   PluginSettingTab,
   Setting,
-  Editor
+  Editor,
+  sanitizeHTMLToDom
 } from 'obsidian';
 
 import {initialize, evaluate} from './evaluator.ts'
@@ -33,7 +34,10 @@ export default class ObsidianClojure extends Plugin {
     this.app.workspace.iterateAllLeaves((leaf) => {
       if (leaf.getViewState().type === "markdown" && leaf.getViewState().state.mode === "preview") {
         const containerEl = leaf.containerEl;
-        evaluate(sciCtx, containerEl, this.settings);
+        evaluate(sciCtx,
+                 containerEl,
+                 this.settings,
+                 {sanitizer: sanitizeHTMLToDom});
       }
     });
   }

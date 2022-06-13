@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "react": "^18.1.0",
-    "react-dom": "^18.1.0"
+    "react-dom": "^18.1.0",
+    "sanitizer-polyfill": "github:mozilla/sanitizer-polyfill#a1d64d48dd4349ab851b73e6019922c564208ed9"
   }
 }

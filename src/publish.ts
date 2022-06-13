@@ -1,4 +1,5 @@
 import {initialize, evaluate} from './evaluator.ts'
+import '../node_modules/sanitizer-polyfill/src/polyfill.js'
 
 const defaultSettings = {
   'blockLanguage': 'clojure',
