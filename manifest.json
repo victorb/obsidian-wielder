@@ -1,7 +1,7 @@
 {
 	"id": "wielder",
 	"name": "Wielder",
-	"version": "1.0.0",
+	"version": "1.0.3",
 	"minAppVersion": "0.14.15",
 	"description": "Clojure inside Obsidian",
 	"author": "Victor Bjelkholm",
