@@ -1,4 +1,5 @@
 [
   "hot-reload",
-  "wielder"
+  "wielder",
+  "dataview"
 ]

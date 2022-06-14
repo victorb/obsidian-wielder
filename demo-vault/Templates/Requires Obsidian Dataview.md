@@ -1,0 +1,2 @@
+> [!WARNING]
+> This document uses variables and functions that are only available when you have [Obsidian Dataview](https://blacksmithgu.github.io/obsidian-dataview/) installed and using Obsidian Desktop. If you don't have it installed, you might see errors and the examples won't work correctly.
