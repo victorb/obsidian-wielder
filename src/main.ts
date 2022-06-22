@@ -103,8 +103,6 @@ export default class ObsidianClojure extends Plugin {
         if (editor.somethingSelected()) {
           const selectedText = editor.getSelection()
           const textToInsert = clojureTemplate(selectedText)
-          const lines = textToInsert.split('\n').length
-          console.log(textToInsert, lines)
           editor.replaceSelection(textToInsert)
         } else {
           editor.replaceSelection(clojureTemplate())
