@@ -1,9 +1,14 @@
-Note: Wielder is not yet available in the official community repository, so the only way to install it is via the **BRAT** (Beta Reviewers Auto-update Tester) plugin.
-
-
 #### Official Repository
 
-Installation is simple, just open up the obsidian settings, enable community plugins and search for "Wielder", hit install and you're ready to go!
+Installation is simple:
+
+- Open up the obsidian settings
+- Enable community plugins (if you haven't before)
+- Search for "Wielder"
+- Press "Install"
+- Press "Enable"
+
+And you're ready to go!
 
 #### **BRAT** (Beta Reviewers Auto-update Tester)
 
@@ -13,7 +18,6 @@ Installation is simple, just open up the obsidian settings, enable community plu
 - After BRAT confirmed the installation, go to the "Community Plugins" tab and activate "Wielder"
 
 Now you're all setup!
-
 
 Next Page: [[03-Clojure]]
 Previous Page: [[01-Introduction]]

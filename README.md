@@ -13,6 +13,10 @@ Add in rendering React components with Reagent, and you can build fully interact
 
 Wielder also allows you to access the Obsidian API directly (via `window.app`), so anything you can do with a plugin, you could also do directly in just document.
 
+### Installation Instructions
+
+Take a look at the [Installation Tutorial](https://wielder.victor.earth/Tutorials/02-Installation) to learn how you can install Wielder in Obsidian
+
 ### Warning: Wielder can run any code defined as Clojure code-blocks in your Obsidian documents
 
 Just like [Templater](https://github.com/SilentVoid13/Templater) or [Dataview](https://github.com/blacksmithgu/obsidian-dataview), Wielder executes code defined by your Obsidian documents. This means any sort of code.
