@@ -158,7 +158,7 @@ export default class ObsidianClojure extends Plugin {
       for (const codeBlockEvaluation of documentEvaluation.codeBlockEvaluations) {
         const codeBlock = codeBlockEvaluation.codeBlock
         if (codeBlock.lineStart == sectionInfo.lineStart && codeBlock.lineEnd == sectionInfo.lineEnd) {
-          renderEvaluation(el, codeBlockEvaluation.output)
+          renderEvaluation(el, codeBlockEvaluation)
           return
         }
       }

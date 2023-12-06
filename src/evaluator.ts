@@ -13,6 +13,7 @@ interface CodeBlock {
 export interface CodeBlockEvaluation {
   codeBlock: CodeBlock
   output: string
+  isError: boolean
 }
 
 export function hasCode(lang: string, container: HTMLElement): boolean {
@@ -57,6 +58,7 @@ export function evaluate_v2(sciCtx: any, settings: any, markdown: string): CodeB
 
   for (const codeBlock of codeBlocks) {
     let output: string = ''
+    let isError: boolean = false
     try {
       output = sci.eval(sciCtx, codeBlock.source, {});
     } catch (err) {
@@ -67,15 +69,16 @@ export function evaluate_v2(sciCtx: any, settings: any, markdown: string): CodeB
       } else {
         output = err.message;
       }
+      isError = true
     }
 
-    evaluations.push({ codeBlock: codeBlock, output: output })
+    evaluations.push({ codeBlock: codeBlock, output: output, isError: isError })
   }
 
   return evaluations
 }
 
-export function renderEvaluation(el: HTMLElement, output: string) {
+export function renderEvaluation(el: HTMLElement, evaluation: CodeBlockEvaluation) {
   // Expects only one code block at a time.
   const codeElement = el.querySelector('code')
   const parentElement = codeElement.parentElement.parentElement;
@@ -90,7 +93,15 @@ export function renderEvaluation(el: HTMLElement, output: string) {
   const $results = document.createElement('code')
   $resultsWrapper.setAttribute('class', 'eval-results')
 
-  $results.innerText = "=> " + sci.ppStr(output)
+  if (evaluation.isError) {
+    $resultsWrapper.style.backgroundColor = 'red';
+    $resultsWrapper.style.color = 'white';
+    $results.style.backgroundColor = 'red';
+    $results.style.color = 'white';
+    $results.innerText = "ERROR: " + evaluation.output
+  } else {
+    $results.innerText = "=> " + sci.ppStr(evaluation.output)
+  }
 
   $resultsWrapper.appendChild($results)
   parentElement.appendChild($resultsWrapper)
