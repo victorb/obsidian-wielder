@@ -148,7 +148,7 @@ export default class ObsidianClojure extends Plugin {
       let documentEvaluation = this.documentEvaluations[sourcePath]
       if (documentEvaluation === undefined || documentEvaluation.hash !== hash) {
         console.log(`Evaluating doc ${sourcePath}`)
-        const evaluations = evaluate_v2(this.sciCtx, this.settings, markdown)
+        const evaluations = evaluate_v2(this.sciCtx, this.settings, markdown, { sanitizer: sanitizeHTMLToDom })
         documentEvaluation = { hash: hash, codeBlockEvaluations: evaluations }
         this.documentEvaluations[sourcePath] = documentEvaluation
       } else {

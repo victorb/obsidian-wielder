@@ -14,6 +14,7 @@ export interface CodeBlockEvaluation {
   codeBlock: CodeBlock
   output: string
   isError: boolean
+  render?: (resultsCodeEl: HTMLElement) => void
 }
 
 export function hasCode(lang: string, container: HTMLElement): boolean {
@@ -51,31 +52,71 @@ function extractCodeBlocks(lang: string, markdown: string): CodeBlock[] {
   return codeBlocks;
 }
 
-export function evaluate_v2(sciCtx: any, settings: any, markdown: string): CodeBlockEvaluation[] {
+export function evaluate_v2(sciCtx: any, settings: any, markdown: string, opts: any): CodeBlockEvaluation[] {
   const lang = settings.blockLanguage.toString()
   const codeBlocks = extractCodeBlocks(lang, markdown)
   const evaluations: CodeBlockEvaluation[] = [];
 
+  let sanitizer: any = null;
+  if (opts && opts.sanitizer) {
+    sanitizer = opts.sanitizer
+  } else {
+    sanitizer = defaultSanitize;
+  }
+
+  let renderFunction: (resultsCodeEl: HTMLElement) => void | null = null
+
+  const sciArgs = {
+    onRenderText: (info: any) => {
+      renderFunction = (r) => r.innerText = info
+    },
+    onRenderHTML: (info: any) => {
+      renderFunction = (r) => r.appendChild(sanitizer(info))
+    },
+    // TODO not implemented on the SCI side yet, not sure we need or not
+    onRenderUnsafeHTML: (info: any) => {
+      renderFunction = (r) => r.innerHTML = info
+    },
+    onRenderCode: (info: any) => {
+      renderFunction = (r) => r.innerText = "=> " + sci.ppStr(info)
+    },
+    onRenderReagent: (reagentComponent: any) => {
+      renderFunction = (r) => {
+        setTimeout(() => {
+          sci.renderReagent(reagentComponent, r)
+        }, 10)
+      }
+    }
+  }
+
   for (const codeBlock of codeBlocks) {
     let output: string = ''
     let isError: boolean = false
+    renderFunction = null
+
     try {
-      output = sci.eval(sciCtx, codeBlock.source, {});
+      output = sci.eval(sciCtx, codeBlock.source, sciArgs);
     } catch (err) {
-      console.error(err);
-      console.trace();
+      console.error(err)
+      console.trace()
       if (settings.fullErrors) {
-        output = sci.ppStr(err);
+        output = sci.ppStr(err)
       } else {
-        output = err.message;
+        output = err.message
       }
       isError = true
     }
 
-    evaluations.push({ codeBlock: codeBlock, output: output, isError: isError })
+    evaluations.push({ codeBlock: codeBlock, output: output, isError: isError, render: renderFunction })
   }
 
   return evaluations
+}
+
+// Receives a string with HTML, and returns a sanitized HTMLElement
+function defaultSanitize(str) {
+  const sanitizer = new Sanitizer();
+  return sanitizer.sanitizeFor('div', str);
 }
 
 export function renderEvaluation(el: HTMLElement, evaluation: CodeBlockEvaluation) {
@@ -89,8 +130,12 @@ export function renderEvaluation(el: HTMLElement, evaluation: CodeBlockEvaluatio
     parentElement.removeChild(possibleResults)
   }
 
-  const $resultsWrapper = document.createElement('pre')
-  const $results = document.createElement('code')
+  // TODO Add inline support
+  const isInline = false
+  const isSpecialRender = evaluation.render != null
+  const wrapElement = isInline ? 'span' : 'div'
+  const $resultsWrapper = isSpecialRender ? document.createElement(wrapElement) : document.createElement('pre')
+  const $results = isSpecialRender ? document.createElement(wrapElement) : document.createElement('code')
   $resultsWrapper.setAttribute('class', 'eval-results')
 
   if (evaluation.isError) {
@@ -100,17 +145,15 @@ export function renderEvaluation(el: HTMLElement, evaluation: CodeBlockEvaluatio
     $results.style.color = 'white';
     $results.innerText = "ERROR: " + evaluation.output
   } else {
-    $results.innerText = "=> " + sci.ppStr(evaluation.output)
+    if (isSpecialRender) {
+      evaluation.render($results)
+    } else {
+      $results.innerText = "=> " + sci.ppStr(evaluation.output)
+    }
   }
 
   $resultsWrapper.appendChild($results)
   parentElement.appendChild($resultsWrapper)
-}
-
-// Receives a string with HTML, and returns a sanitized HTMLElement
-function defaultSanitize(str) {
-  const sanitizer = new Sanitizer();
-  return sanitizer.sanitizeFor('div', str);
 }
 
 export function evaluate(sciCtx, container, settings, opts) {
