@@ -7,11 +7,19 @@ import {
   sanitizeHTMLToDom
 } from 'obsidian';
 
-import {initialize, evaluate} from './evaluator.ts'
+import {initialize, hasCode, evaluate, CodeBlockEvaluation, evaluate_v2, renderEvaluation} from './evaluator.ts'
+
+import CryptoJS from 'crypto-js';
 
 interface ObsidianClojureSettings {
   fullErrors: boolean
   blockLanguage: String
+}
+
+interface DocumentEvaluation {
+  /** From the last time the document was evaluated. */
+  hash: string
+  codeBlockEvaluations: CodeBlockEvaluation[]
 }
 
 const DEFAULT_SETTINGS: ObsidianClojureSettings = {
@@ -27,6 +35,10 @@ ${toBeWrapped}
 `
 }
 
+function sha256(message: string): string {
+  return CryptoJS.SHA256(message).toString()
+}
+
 export default class ObsidianClojure extends Plugin {
   settings: ObsidianClojureSettings;
 
@@ -35,7 +47,12 @@ export default class ObsidianClojure extends Plugin {
   // TODO need to get rid of this hack
   defaultTimeout: number;
 
+  sciCtx: any;
+
+  documentEvaluations: { [docId: string]: DocumentEvaluation } = {};
+
   async evalAll(sciCtx) {
+    /*
     this.app.workspace.iterateAllLeaves((leaf) => {
       if (leaf.getViewState().type === "markdown" && leaf.getViewState().state.mode === "preview") {
         const containerEl = leaf.containerEl;
@@ -45,6 +62,7 @@ export default class ObsidianClojure extends Plugin {
                  {sanitizer: sanitizeHTMLToDom});
       }
     });
+    */
   }
 
   killCustomIntervals () {
@@ -116,6 +134,35 @@ export default class ObsidianClojure extends Plugin {
 
 
     this.addSettingTab(new ObsidianClojureSettingTab(this.app, this));
+
+    this.registerMarkdownPostProcessor((el, context) => {
+      if (!hasCode(this.settings.blockLanguage.toString(), el)) {
+        return
+      }
+
+      const sourcePath = context.sourcePath
+      const sectionInfo = context.getSectionInfo(el)
+      const markdown = sectionInfo.text
+      const hash = sha256(markdown)
+
+      let documentEvaluation = this.documentEvaluations[sourcePath]
+      if (documentEvaluation === undefined || documentEvaluation.hash !== hash) {
+        console.log(`Evaluating doc ${sourcePath}`)
+        const evaluations = evaluate_v2(this.sciCtx, this.settings, markdown)
+        documentEvaluation = { hash: hash, codeBlockEvaluations: evaluations }
+        this.documentEvaluations[sourcePath] = documentEvaluation
+      } else {
+        console.log(`Doc ${sourcePath} has already been evaluated`)
+      }
+
+      for (const codeBlockEvaluation of documentEvaluation.codeBlockEvaluations) {
+        const codeBlock = codeBlockEvaluation.codeBlock
+        if (codeBlock.lineStart == sectionInfo.lineStart && codeBlock.lineEnd == sectionInfo.lineEnd) {
+          renderEvaluation(el, codeBlockEvaluation.output)
+          return
+        }
+      }
+    });
   }
 
   async onunload() {
@@ -133,6 +180,7 @@ export default class ObsidianClojure extends Plugin {
   }
 }
 
+// TODO If settings change then reset evaluation cache
 class ObsidianClojureSettingTab extends PluginSettingTab {
   plugin: ObsidianClojure;
 

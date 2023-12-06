@@ -4,6 +4,98 @@ export function initialize(global_object) {
   return sci.init(global_object)
 }
 
+interface CodeBlock {
+  source: string
+  lineStart: number
+  lineEnd: number
+}
+
+export interface CodeBlockEvaluation {
+  codeBlock: CodeBlock
+  output: string
+}
+
+export function hasCode(lang: string, container: HTMLElement): boolean {
+  const codeElements = container.querySelectorAll('code')
+  for (const codeElement of codeElements) {
+    const codeBlockLanguage = 'language-' + lang
+    if (codeElement.classList.contains(codeBlockLanguage)) {
+      return true
+    }
+  }
+  return false
+}
+
+function extractCodeBlocks(lang: string, markdown: string): CodeBlock[] {
+  const lines = markdown.split('\n');
+  const codeBlocks: CodeBlock[] = [];
+  let isInCodeBlock = false;
+  let currentBlock = '';
+  let blockStartLine = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (line.match(`^\`\`\`${lang}(\s|$)`)) {
+          isInCodeBlock = true;
+          blockStartLine = i;
+          currentBlock = '';
+      } else if (line.match(`^\`\`\`(\s|$)`) && isInCodeBlock) {
+          isInCodeBlock = false;
+          codeBlocks.push({ source: currentBlock.trim(), lineStart: blockStartLine, lineEnd: i });
+      } else if (isInCodeBlock) {
+          currentBlock += line + '\n';
+      }
+  }
+
+  return codeBlocks;
+}
+
+export function evaluate_v2(sciCtx: any, settings: any, markdown: string): CodeBlockEvaluation[] {
+  const lang = settings.blockLanguage.toString()
+  const codeBlocks = extractCodeBlocks(lang, markdown)
+  const evaluations: CodeBlockEvaluation[] = [];
+
+  for (const codeBlock of codeBlocks) {
+    let output: string = ''
+    try {
+      output = sci.eval(sciCtx, codeBlock.source, {});
+    } catch (err) {
+      console.error(err);
+      console.trace();
+      if (settings.fullErrors) {
+        output = sci.ppStr(err);
+      } else {
+        output = err.message;
+      }
+    }
+
+    evaluations.push({ codeBlock: codeBlock, output: output })
+  }
+
+  return evaluations
+}
+
+export function renderEvaluation(el: HTMLElement, output: string) {
+  // Expects only one code block at a time.
+  const codeElement = el.querySelector('code')
+  const parentElement = codeElement.parentElement.parentElement;
+
+  // Might have existing wrapper we need to remove first
+  const possibleResults = parentElement.querySelector('.eval-results')
+  if (possibleResults) {
+    parentElement.removeChild(possibleResults)
+  }
+
+  const $resultsWrapper = document.createElement('pre')
+  const $results = document.createElement('code')
+  $resultsWrapper.setAttribute('class', 'eval-results')
+
+  $results.innerText = "=> " + sci.ppStr(output)
+
+  $resultsWrapper.appendChild($results)
+  parentElement.appendChild($resultsWrapper)
+}
+
 // Receives a string with HTML, and returns a sanitized HTMLElement
 function defaultSanitize(str) {
   const sanitizer = new Sanitizer();
