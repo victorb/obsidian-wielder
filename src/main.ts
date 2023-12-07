@@ -7,7 +7,7 @@ import {
   sanitizeHTMLToDom
 } from 'obsidian';
 
-import {initialize, hasCode, evaluate, CodeBlockEvaluation, evaluate_v2, renderEvaluation} from './evaluator.ts'
+import {initialize, hasCode, evaluate, CodeBlockEvaluation, evaluate_v2, renderEvaluation, renderInlineEvaluation} from './evaluator.ts'
 
 import CryptoJS from 'crypto-js';
 
@@ -136,6 +136,9 @@ export default class ObsidianClojure extends Plugin {
     this.addSettingTab(new ObsidianClojureSettingTab(this.app, this));
 
     this.registerMarkdownPostProcessor((el, context) => {
+      // `el` here is usually a section of a file. ``` blocks appear to always be one section. Inline code, however, can 
+      // be surrounded by text, which may be on multiple lines.
+
       if (!hasCode(this.settings.blockLanguage.toString(), el)) {
         return
       }
@@ -147,19 +150,20 @@ export default class ObsidianClojure extends Plugin {
 
       let documentEvaluation = this.documentEvaluations[sourcePath]
       if (documentEvaluation === undefined || documentEvaluation.hash !== hash) {
-        console.log(`Evaluating doc ${sourcePath}`)
         const evaluations = evaluate_v2(this.sciCtx, this.settings, markdown, { sanitizer: sanitizeHTMLToDom })
         documentEvaluation = { hash: hash, codeBlockEvaluations: evaluations }
         this.documentEvaluations[sourcePath] = documentEvaluation
-      } else {
-        console.log(`Doc ${sourcePath} has already been evaluated`)
       }
 
       for (const codeBlockEvaluation of documentEvaluation.codeBlockEvaluations) {
         const codeBlock = codeBlockEvaluation.codeBlock
-        if (codeBlock.lineStart == sectionInfo.lineStart && codeBlock.lineEnd == sectionInfo.lineEnd) {
-          renderEvaluation(el, codeBlockEvaluation)
-          return
+        if (!codeBlock.isInline) {
+          if (codeBlock.lineStart == sectionInfo.lineStart && codeBlock.lineEnd == sectionInfo.lineEnd) {
+            renderEvaluation(el, codeBlockEvaluation)
+            return
+          }
+        } else if (codeBlock.lineStart >= sectionInfo.lineStart && codeBlock.lineStart <= sectionInfo.lineEnd) {
+          renderInlineEvaluation(el, codeBlockEvaluation)
         }
       }
     });

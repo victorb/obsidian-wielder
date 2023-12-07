@@ -8,6 +8,8 @@ interface CodeBlock {
   source: string
   lineStart: number
   lineEnd: number
+  isInline: boolean
+  inlineIndex?: number
 }
 
 export interface CodeBlockEvaluation {
@@ -20,6 +22,11 @@ export interface CodeBlockEvaluation {
 export function hasCode(lang: string, container: HTMLElement): boolean {
   const codeElements = container.querySelectorAll('code')
   for (const codeElement of codeElements) {
+    // Inline code
+    if (codeElement.innerText[0] === '|') {
+      return true
+    }
+
     const codeBlockLanguage = 'language-' + lang
     if (codeElement.classList.contains(codeBlockLanguage)) {
       return true
@@ -43,10 +50,30 @@ function extractCodeBlocks(lang: string, markdown: string): CodeBlock[] {
           currentBlock = '';
       } else if (line.match(`^\`\`\`(\s|$)`) && isInCodeBlock) {
           isInCodeBlock = false;
-          codeBlocks.push({ source: currentBlock.trim(), lineStart: blockStartLine, lineEnd: i });
+          codeBlocks.push({ 
+            source: currentBlock.trim(),
+            lineStart: blockStartLine,
+            lineEnd: i,
+            isInline: false
+          });
       } else if (isInCodeBlock) {
           currentBlock += line + '\n';
-      }
+      } else {
+        // Handling inline code
+        const inlineRegex = /`\|([^`]+)`/g
+        let inlineMatch
+        let inlineIndex = 0
+        while ((inlineMatch = inlineRegex.exec(line)) !== null) {
+            codeBlocks.push({ 
+                source: inlineMatch[1].trim(), 
+                lineStart: i, 
+                lineEnd: i,
+                isInline: true,
+                inlineIndex
+            })
+            inlineIndex++
+        }
+    }
   }
 
   return codeBlocks;
@@ -130,12 +157,9 @@ export function renderEvaluation(el: HTMLElement, evaluation: CodeBlockEvaluatio
     parentElement.removeChild(possibleResults)
   }
 
-  // TODO Add inline support
-  const isInline = false
   const isSpecialRender = evaluation.render != null
-  const wrapElement = isInline ? 'span' : 'div'
-  const $resultsWrapper = isSpecialRender ? document.createElement(wrapElement) : document.createElement('pre')
-  const $results = isSpecialRender ? document.createElement(wrapElement) : document.createElement('code')
+  const $resultsWrapper = isSpecialRender ? document.createElement('div') : document.createElement('pre')
+  const $results = isSpecialRender ? document.createElement('div') : document.createElement('code')
   $resultsWrapper.setAttribute('class', 'eval-results')
 
   if (evaluation.isError) {
@@ -154,6 +178,17 @@ export function renderEvaluation(el: HTMLElement, evaluation: CodeBlockEvaluatio
 
   $resultsWrapper.appendChild($results)
   parentElement.appendChild($resultsWrapper)
+}
+
+/**
+ * Does not support special render functions.
+ */
+export function renderInlineEvaluation(el: HTMLElement, evaluation: CodeBlockEvaluation) {
+  const codeElement = el.querySelectorAll('code')[evaluation.codeBlock.inlineIndex]
+  codeElement.innerText = evaluation.output
+  codeElement.style.color = 'inherit'
+  codeElement.style.backgroundColor = 'inherit'
+  codeElement.style.fontSize = 'inherit'
 }
 
 export function evaluate(sciCtx, container, settings, opts) {
