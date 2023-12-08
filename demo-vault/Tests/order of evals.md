@@ -1,4 +1,6 @@
 ```clojure
+(def my-name "Nate")
+
 (.setTimeout js/window
 	(fn []
 		(def my-name "Victor")
@@ -7,7 +9,7 @@
 ```
 
 ```clojure
-(*renderText (str "Hello theres " my-name))
+(*renderText (str "Hello there " my-name))
 (.setTimeout js/window
 	(fn []
 		(*renderText (str "Hello there " my-name))

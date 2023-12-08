@@ -20,9 +20,3 @@ It'll look something like this:
 Clojure's repeat, if you only give it one argument, will return a infinitive, lazy sequence. This can hang Obsidian as it'll try to `realize` all the elements in the sequence, but will never reach the end.
 
 No workaround currently available for this, so be careful with infinitive sequences.
-
-#### Obsidian - Long documents
-
-The way we're getting all the elements to be rendered, doesn't seem to work well if the document is veeeery long (see Document [[long]] as an example). This means that the first code elements in the document is found an evaluated correctly, but as you scroll on, eventually you'll reach elements that was not evaluated at all.
-
-No workaround currently available for this.
