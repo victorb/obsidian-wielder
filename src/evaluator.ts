@@ -4,6 +4,12 @@ export function initialize(global_object) {
   return sci.init(global_object)
 }
 
+// Receives a string with HTML, and returns a sanitized HTMLElement
+function defaultSanitize(str) {
+  const sanitizer = new Sanitizer();
+  return sanitizer.sanitizeFor('div', str);
+}
+
 interface CodeBlock {
   source: string
   lineStart: number
@@ -12,11 +18,136 @@ interface CodeBlock {
   inlineIndex?: number
 }
 
-export interface CodeBlockEvaluation {
-  codeBlock: CodeBlock
-  output: string
-  isError: boolean
-  render?: (resultsCodeEl: HTMLElement) => void
+export class CodeBlockEvaluation {
+  public codeBlock: CodeBlock
+
+  private output?: string
+  private isError?: boolean
+  private renderFunction?: (resultsCodeEl: HTMLElement) => void
+  private el?: HTMLElement
+
+  constructor(codeBlock: CodeBlock, sciCtx: any, settings: any, opts: any) {
+    this.codeBlock = codeBlock
+    this.eval(sciCtx, settings, opts)
+  }
+
+  private eval(sciCtx: any, settings: any, opts: any) {
+    let sanitizer: any = null;
+    if (opts && opts.sanitizer) {
+      sanitizer = opts.sanitizer
+    } else {
+      sanitizer = defaultSanitize;
+    }
+
+    // TODO The render functions can get called asynchronously in which case this doesn't work because we've already saved the output
+    const sciArgs = {
+      onRenderText: (info: any) => {
+        this.setRenderFunction((r) => r.innerText = info)
+      },
+      onRenderHTML: (info: any) => {
+        this.setRenderFunction((r) => r.appendChild(sanitizer(info)))
+      },
+      // TODO not implemented on the SCI side yet, not sure we need or not
+      onRenderUnsafeHTML: (info: any) => {
+        this.setRenderFunction((r) => r.innerHTML = info)
+      },
+      onRenderCode: (info: any) => {
+        this.setRenderFunction((r) => r.innerText = "=> " + sci.ppStr(info))
+      },
+      onRenderReagent: (reagentComponent: any) => {
+        this.setRenderFunction((r) => {
+          setTimeout(() => {
+            sci.renderReagent(reagentComponent, r)
+          }, 10)
+        })
+      }
+    }
+
+    let output: string = ''
+    let isError: boolean = false
+
+    try {
+      output = sci.eval(sciCtx, this.codeBlock.source, sciArgs);
+    } catch (err) {
+      console.error(err)
+      console.trace()
+      if (settings.fullErrors) {
+        output = sci.ppStr(err)
+      } else {
+        output = err.message
+      }
+      isError = true
+    }
+
+    this.output = output
+    this.isError = isError
+  }
+
+  public attach(el: HTMLElement) {
+    this.el = el
+    this.render()
+  }
+
+  private setRenderFunction(func: (resultsCodeEl: HTMLElement) => void) {
+    this.renderFunction = func
+    this.render()
+  }
+
+  private render() {
+    const el = this.el
+    if (el == null) return
+
+    if (this.codeBlock.isInline) {
+      this.renderInline()
+      return
+    }
+
+    const renderFunction = this.renderFunction
+
+    // Expects only one code block at a time.
+    const codeElement = el.querySelector('code')
+    const parentElement = codeElement.parentElement.parentElement;
+
+    // Might have existing wrapper we need to remove first
+    const possibleResults = parentElement.querySelector('.eval-results')
+    if (possibleResults) {
+      parentElement.removeChild(possibleResults)
+    }
+
+    const isSpecialRender = renderFunction != null
+    const $resultsWrapper = isSpecialRender ? document.createElement('div') : document.createElement('pre')
+    const $results = isSpecialRender ? document.createElement('div') : document.createElement('code')
+    $resultsWrapper.setAttribute('class', 'eval-results')
+
+    if (this.isError) {
+      $resultsWrapper.style.backgroundColor = 'red';
+      $resultsWrapper.style.color = 'white';
+      $results.style.backgroundColor = 'red';
+      $results.style.color = 'white';
+      $results.innerText = "ERROR: " + this.output
+    } else {
+      if (isSpecialRender) {
+        renderFunction($results)
+      } else {
+        // TODO This could be a render function
+        $results.innerText = "=> " + sci.ppStr(this.output)
+      }
+    }
+
+    $resultsWrapper.appendChild($results)
+    parentElement.appendChild($resultsWrapper)
+  }
+
+  /**
+   * Does not support special render functions.
+   */
+  private renderInline() {
+    const codeElement = this.el.querySelectorAll('code')[this.codeBlock.inlineIndex]
+    codeElement.innerText = this.output
+    codeElement.style.color = 'inherit'
+    codeElement.style.backgroundColor = 'inherit'
+    codeElement.style.fontSize = 'inherit'
+  }
 }
 
 export function hasCode(lang: string, container: HTMLElement): boolean {
@@ -83,112 +214,11 @@ export function evaluate_v2(sciCtx: any, settings: any, markdown: string, opts: 
   const lang = settings.blockLanguage.toString()
   const codeBlocks = extractCodeBlocks(lang, markdown)
   const evaluations: CodeBlockEvaluation[] = [];
-
-  let sanitizer: any = null;
-  if (opts && opts.sanitizer) {
-    sanitizer = opts.sanitizer
-  } else {
-    sanitizer = defaultSanitize;
-  }
-
-  let renderFunction: (resultsCodeEl: HTMLElement) => void | null = null
-
-  const sciArgs = {
-    onRenderText: (info: any) => {
-      renderFunction = (r) => r.innerText = info
-    },
-    onRenderHTML: (info: any) => {
-      renderFunction = (r) => r.appendChild(sanitizer(info))
-    },
-    // TODO not implemented on the SCI side yet, not sure we need or not
-    onRenderUnsafeHTML: (info: any) => {
-      renderFunction = (r) => r.innerHTML = info
-    },
-    onRenderCode: (info: any) => {
-      renderFunction = (r) => r.innerText = "=> " + sci.ppStr(info)
-    },
-    onRenderReagent: (reagentComponent: any) => {
-      renderFunction = (r) => {
-        setTimeout(() => {
-          sci.renderReagent(reagentComponent, r)
-        }, 10)
-      }
-    }
-  }
-
   for (const codeBlock of codeBlocks) {
-    let output: string = ''
-    let isError: boolean = false
-    renderFunction = null
-
-    try {
-      output = sci.eval(sciCtx, codeBlock.source, sciArgs);
-    } catch (err) {
-      console.error(err)
-      console.trace()
-      if (settings.fullErrors) {
-        output = sci.ppStr(err)
-      } else {
-        output = err.message
-      }
-      isError = true
-    }
-
-    evaluations.push({ codeBlock: codeBlock, output: output, isError: isError, render: renderFunction })
+    const evaluation = new CodeBlockEvaluation(codeBlock, sciCtx, settings, opts)
+    evaluations.push(evaluation)
   }
-
   return evaluations
-}
-
-// Receives a string with HTML, and returns a sanitized HTMLElement
-function defaultSanitize(str) {
-  const sanitizer = new Sanitizer();
-  return sanitizer.sanitizeFor('div', str);
-}
-
-export function renderEvaluation(el: HTMLElement, evaluation: CodeBlockEvaluation) {
-  // Expects only one code block at a time.
-  const codeElement = el.querySelector('code')
-  const parentElement = codeElement.parentElement.parentElement;
-
-  // Might have existing wrapper we need to remove first
-  const possibleResults = parentElement.querySelector('.eval-results')
-  if (possibleResults) {
-    parentElement.removeChild(possibleResults)
-  }
-
-  const isSpecialRender = evaluation.render != null
-  const $resultsWrapper = isSpecialRender ? document.createElement('div') : document.createElement('pre')
-  const $results = isSpecialRender ? document.createElement('div') : document.createElement('code')
-  $resultsWrapper.setAttribute('class', 'eval-results')
-
-  if (evaluation.isError) {
-    $resultsWrapper.style.backgroundColor = 'red';
-    $resultsWrapper.style.color = 'white';
-    $results.style.backgroundColor = 'red';
-    $results.style.color = 'white';
-    $results.innerText = "ERROR: " + evaluation.output
-  } else {
-    if (isSpecialRender) {
-      evaluation.render($results)
-    } else {
-      $results.innerText = "=> " + sci.ppStr(evaluation.output)
-    }
-  }
-
-  $resultsWrapper.appendChild($results)
-  parentElement.appendChild($resultsWrapper)
-}
-
-/**
- * Does not support special render functions.
- */
-export function renderInlineEvaluation(el: HTMLElement, evaluation: CodeBlockEvaluation) {
-  const codeElement = el.querySelectorAll('code')[evaluation.codeBlock.inlineIndex]
-  codeElement.innerText = evaluation.output
-  codeElement.style.color = 'inherit'
-  codeElement.style.backgroundColor = 'inherit'
-  codeElement.style.fontSize = 'inherit'
 }
 
 export function evaluate(sciCtx, container, settings, opts) {

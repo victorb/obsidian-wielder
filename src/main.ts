@@ -159,11 +159,11 @@ export default class ObsidianClojure extends Plugin {
         const codeBlock = codeBlockEvaluation.codeBlock
         if (!codeBlock.isInline) {
           if (codeBlock.lineStart == sectionInfo.lineStart && codeBlock.lineEnd == sectionInfo.lineEnd) {
-            renderEvaluation(el, codeBlockEvaluation)
+            codeBlockEvaluation.attach(el)
             return
           }
         } else if (codeBlock.lineStart >= sectionInfo.lineStart && codeBlock.lineStart <= sectionInfo.lineEnd) {
-          renderInlineEvaluation(el, codeBlockEvaluation)
+          codeBlockEvaluation.attach(el)
         }
       }
     });
