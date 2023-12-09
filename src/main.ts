@@ -8,7 +8,7 @@ import {
   MarkdownView
 } from 'obsidian';
 
-import {initialize, hasCode, CodeBlockEvaluation, evaluate_v2, DocumentEvaluation} from './evaluator.ts'
+import {initialize, hasCode, CodeBlockEvaluation, evaluate, DocumentEvaluation} from './evaluator.ts'
 
 import CryptoJS from 'crypto-js';
 
@@ -105,7 +105,7 @@ export default class ObsidianClojure extends Plugin {
         // TODO If a code block is completely deleted the post-processing callback isn't triggered and we don't get an
         //   opportunity to detach.
         documentEvaluation?.detach()
-        const evaluations = evaluate_v2(this, this.sciCtx, this.settings, markdown, { sanitizer: sanitizeHTMLToDom })
+        const evaluations = evaluate(this, this.sciCtx, this.settings, markdown, { sanitizer: sanitizeHTMLToDom })
         documentEvaluation = new DocumentEvaluation(hash, evaluations)
         this.documentEvaluations[path] = documentEvaluation
       }

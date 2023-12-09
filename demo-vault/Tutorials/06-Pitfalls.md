@@ -4,7 +4,7 @@ While the approach is very powerful and allows you to be very dynamic, directly 
 
 ##### JavaScript `setInterval`
 
-Every time you create a JavaScript interval with `setInterval`, you create something that will exists until the end of time (or you call `clearInterval`). Since we cannot automagically keep track of all the intervals created in your documents VS the ones created natively by Obsidian, you need to use `setIntervalTracked` instead of `setInterval`, which allows us to clear all intervals when you change the document, or navigate to a different page in Obsidian.
+Every time you create a JavaScript interval with `(.setInterval js/window …)`, you create something that will exists until the end of time (or you call `clearInterval`). Since we cannot automagically keep track of all the intervals created in your documents VS the ones created natively by Obsidian, you need to use `setInterval` instead of `.setInterval js/window`, which allows us to clear all intervals when you change the document, or navigate to a different page in Obsidian.
 
 It'll look something like this:
 
