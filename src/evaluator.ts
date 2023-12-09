@@ -1,4 +1,6 @@
+import { MarkdownSectionInformation, Plugin } from 'obsidian';
 import sci from '../lib/sci.js'
+import { IntervalsManager } from 'intervals.js';
 
 export function initialize(global_object) {
   return sci.init(global_object)
@@ -21,14 +23,34 @@ interface CodeBlock {
 export class CodeBlockEvaluation {
   public codeBlock: CodeBlock
 
+  private plugin: Plugin
   private output?: string
   private isError?: boolean
   private renderFunction?: (resultsCodeEl: HTMLElement) => void
   private el?: HTMLElement
+  private _intervalsManager?: IntervalsManager
 
-  constructor(codeBlock: CodeBlock, sciCtx: any, settings: any, opts: any) {
+  constructor(plugin: Plugin, codeBlock: CodeBlock, sciCtx: any, settings: any, opts: any) {
+    this.plugin = plugin
     this.codeBlock = codeBlock
     this.eval(sciCtx, settings, opts)
+  }
+
+  public attach(el: HTMLElement) {
+    this.el = el
+    this.render()
+  }
+
+  public detach() {
+    this.el = null
+    this._intervalsManager?.killAll()
+  }
+
+  private intervalsManager(): IntervalsManager {
+    if (this._intervalsManager == null) {
+      this._intervalsManager = new IntervalsManager(this.plugin)
+    }
+    return this._intervalsManager
   }
 
   private eval(sciCtx: any, settings: any, opts: any) {
@@ -60,6 +82,9 @@ export class CodeBlockEvaluation {
             sci.renderReagent(reagentComponent, r)
           }, 10)
         })
+      },
+      onSetInterval: (func: any, intervalMs: number) => {
+        this.intervalsManager().setInterval(func, intervalMs)
       }
     }
 
@@ -81,11 +106,6 @@ export class CodeBlockEvaluation {
 
     this.output = output
     this.isError = isError
-  }
-
-  public attach(el: HTMLElement) {
-    this.el = el
-    this.render()
   }
 
   private setRenderFunction(func: (resultsCodeEl: HTMLElement) => void) {
@@ -150,6 +170,37 @@ export class CodeBlockEvaluation {
   }
 }
 
+export class DocumentEvaluation {
+  /** From the last time the document was evaluated. */
+  public hash: string
+  public codeBlockEvaluations: CodeBlockEvaluation[]
+
+  constructor(hash: string, codeBlockEvaluations: CodeBlockEvaluation[]) {
+    this.hash = hash
+    this.codeBlockEvaluations = codeBlockEvaluations
+  }
+
+  public attach(el: HTMLElement, sectionInfo: MarkdownSectionInformation) {
+    for (const codeBlockEvaluation of this.codeBlockEvaluations) {
+      const codeBlock = codeBlockEvaluation.codeBlock
+      if (!codeBlock.isInline) {
+        if (codeBlock.lineStart == sectionInfo.lineStart && codeBlock.lineEnd == sectionInfo.lineEnd) {
+          codeBlockEvaluation.attach(el)
+          return
+        }
+      } else if (codeBlock.lineStart >= sectionInfo.lineStart && codeBlock.lineStart <= sectionInfo.lineEnd) {
+        codeBlockEvaluation.attach(el)
+      }
+    }
+  }
+
+  public detach() {
+    for (const evaluation of this.codeBlockEvaluations) {
+      evaluation.detach()
+    }
+  }
+}
+
 export function hasCode(lang: string, container: HTMLElement): boolean {
   const codeElements = container.querySelectorAll('code')
   for (const codeElement of codeElements) {
@@ -210,135 +261,13 @@ function extractCodeBlocks(lang: string, markdown: string): CodeBlock[] {
   return codeBlocks;
 }
 
-export function evaluate_v2(sciCtx: any, settings: any, markdown: string, opts: any): CodeBlockEvaluation[] {
+export function evaluate(plugin: Plugin, sciCtx: any, settings: any, markdown: string, opts: any): CodeBlockEvaluation[] {
   const lang = settings.blockLanguage.toString()
   const codeBlocks = extractCodeBlocks(lang, markdown)
   const evaluations: CodeBlockEvaluation[] = [];
   for (const codeBlock of codeBlocks) {
-    const evaluation = new CodeBlockEvaluation(codeBlock, sciCtx, settings, opts)
+    const evaluation = new CodeBlockEvaluation(plugin, codeBlock, sciCtx, settings, opts)
     evaluations.push(evaluation)
   }
   return evaluations
-}
-
-export function evaluate(sciCtx, container, settings, opts) {
-  const codeElements = container.querySelectorAll('code')
-
-  let sanitizer = null;
-  if (opts && opts.sanitizer) {
-    sanitizer = opts.sanitizer
-  } else {
-    sanitizer = defaultSanitize;
-  }
-
-  for (const codeElement of codeElements) {
-
-    let isInline = false
-    let isError = false
-    let isSpecialRender = false
-
-    if (codeElement.innerText[0] === '|') {
-      isInline = true;
-    }
-
-    const codeBlockLanguage = 'language-' + settings.blockLanguage
-    if (!codeElement.classList.contains(codeBlockLanguage) && !isInline) {
-      continue
-    }
-
-    let codeToEval = codeElement.innerText;
-    if (isInline) {
-      codeToEval = codeToEval.slice(2)
-    }
-
-    const hasRenderText = codeToEval.includes("*renderText")
-    const hasRenderHTML = codeToEval.includes("*renderHTML")
-    const hasRenderReagent = codeToEval.includes("*renderReagent")
-    const hasRenderCode = codeToEval.includes("*renderCode")
-    isSpecialRender = hasRenderText || hasRenderHTML || hasRenderReagent || isInline
-
-    let output = "Loading..."
-
-    const parentElement = codeElement.parentElement.parentElement;
-    // Might have existing wrapper we need to remove first
-    const possibleResults = parentElement.querySelector('.eval-results')
-
-    if (possibleResults) {
-      parentElement.removeChild(possibleResults)
-    }
-
-    const wrapElement = isInline ? 'span' : 'div'
-
-    const $resultsWrapper = isSpecialRender ? document.createElement(wrapElement) : document.createElement('pre')
-    const $results = isSpecialRender ? document.createElement(wrapElement) : document.createElement('code')
-
-    $resultsWrapper.setAttribute('class', 'eval-results')
-
-    const sciArgs = {
-      onRenderText: (info) => {
-        isSpecialRender = true;
-        $results.innerText = info;
-      },
-      onRenderHTML: (info) => {
-        isSpecialRender = true;
-        $results.appendChild(sanitizer(info));
-      },
-      // TODO not implemented on the SCI side yet, not sure we need or not
-      onRenderUnsafeHTML: (info) => {
-        isSpecialRender = true;
-        $results.innerHTML = info;
-      },
-      onRenderCode: (info) => {
-        isSpecialRender = true;
-        $results.innerText = "=> " + sci.ppStr(info)
-      },
-      onRenderReagent: (reagentComponent) => {
-        isSpecialRender = true;
-        setTimeout(() => {
-          sci.renderReagent(reagentComponent, $results)
-        }, 10)
-      }
-    };
-
-    try {
-      output = sci.eval(sciCtx, codeToEval, sciArgs);
-    } catch (err) {
-      console.error(err);
-      console.trace();
-      if (settings.fullErrors) {
-        output = sci.ppStr(err);
-      } else {
-        output = err.message;
-      }
-      isError = true;
-    }
-
-    if (isInline) {
-      codeElement.innerText = output;
-      codeElement.style.color = 'inherit';
-      codeElement.style.backgroundColor = 'inherit';
-      codeElement.style.fontSize = 'inherit';
-    } else {
-      if (isError) {
-        $resultsWrapper.style.backgroundColor = 'red';
-        $resultsWrapper.style.color = 'white';
-      }
-
-      if (isError) {
-        $results.style.backgroundColor = 'red';
-        $results.style.color = 'white';
-      }
-
-      if (isError) {
-        $results.innerText = "ERROR: " + output
-      } else {
-        if (!isSpecialRender) {
-          $results.innerText = "=> " + sci.ppStr(output)
-        }
-      }
-
-      $resultsWrapper.appendChild($results)
-      parentElement.appendChild($resultsWrapper)
-    }
-  }
 }

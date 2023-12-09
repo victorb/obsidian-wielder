@@ -29,7 +29,8 @@
 (defn ^:export evalString [ctx source {:keys [onRenderHTML
                                               onRenderText
                                               onRenderCode
-                                              onRenderReagent]
+                                              onRenderReagent
+                                              onSetInterval]
                                        :as opts}]
   (sci/eval-string*
     (assoc
@@ -42,7 +43,8 @@
              '*renderReagent (fn [app container-el]
                                (.onRenderReagent
                                  opts
-                                 app))))
+                                 app))
+             'setInterval (.-onSetInterval ^js/Object opts)))
     source))
 
 (comment

@@ -9,8 +9,7 @@ Every time you create a JavaScript interval with `setInterval`, you create somet
 It'll look something like this:
 
 ```clojure
-(.setIntervalTracked
- js/window
+(setInterval
  #(*renderCode (.toISOString (js/Date.)))
  1000)
 ```

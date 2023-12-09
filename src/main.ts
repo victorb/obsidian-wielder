@@ -4,22 +4,17 @@ import {
   PluginSettingTab,
   Setting,
   Editor,
-  sanitizeHTMLToDom
+  sanitizeHTMLToDom,
+  MarkdownView
 } from 'obsidian';
 
-import {initialize, hasCode, evaluate, CodeBlockEvaluation, evaluate_v2, renderEvaluation, renderInlineEvaluation} from './evaluator.ts'
+import {initialize, hasCode, CodeBlockEvaluation, evaluate_v2, DocumentEvaluation} from './evaluator.ts'
 
 import CryptoJS from 'crypto-js';
 
 interface ObsidianClojureSettings {
   fullErrors: boolean
   blockLanguage: String
-}
-
-interface DocumentEvaluation {
-  /** From the last time the document was evaluated. */
-  hash: string
-  codeBlockEvaluations: CodeBlockEvaluation[]
 }
 
 const DEFAULT_SETTINGS: ObsidianClojureSettings = {
@@ -49,69 +44,14 @@ export default class ObsidianClojure extends Plugin {
 
   sciCtx: any;
 
-  documentEvaluations: { [docId: string]: DocumentEvaluation } = {};
+  documentEvaluations: { [sourcePath: string]: DocumentEvaluation } = {};
 
-  async evalAll(sciCtx) {
-    /*
-    this.app.workspace.iterateAllLeaves((leaf) => {
-      if (leaf.getViewState().type === "markdown" && leaf.getViewState().state.mode === "preview") {
-        const containerEl = leaf.containerEl;
-        evaluate(sciCtx,
-                 containerEl,
-                 this.settings,
-                 {sanitizer: sanitizeHTMLToDom});
-      }
-    });
-    */
-  }
-
-  killCustomIntervals () {
-    for (const intervalID of this.activeIntervals) {
-      clearInterval(intervalID)
-    }
-  }
-
-  killIntervalsAndEval() {
-    this.killCustomIntervals();
-    this.evalAll(this.sciCtx)
-  }
-
-  handleRenderFromEvent() {
-    window.setTimeout(() => {
-      this.killIntervalsAndEval();
-    }, this.defaultWaitTimeout)
-  }
-
-  customSetInterval(func, interval_ms) {
-    const intervalID = window.setInterval(func, interval_ms)
-    this.registerInterval(intervalID)
-    this.activeIntervals.push(intervalID)
-  }
+  openMarkdownFilePaths: string[] = [];
 
   async onload() {
     await this.loadSettings();
 
-    this.eventsToListenTo = [
-      'editor-change',
-      'file-open',
-      'layout-change',
-      'active-leaf-change',
-    ];
-    this.defaultWaitTimeout = 100;
-    this.activeIntervals = [];
-
-    window.setIntervalTracked = this.customSetInterval.bind(this);
-
     this.sciCtx = initialize(window)
-
-    this.eventsToListenTo.forEach((eventName) => {
-      const eventRef = this.app.workspace.on(eventName, this.handleRenderFromEvent.bind(this))
-      this.registerEvent(eventRef);
-    })
-
-    // TODO Figure out how to wait for document to finalize initalization
-    // Initial load of plugin should be considered an "event" in itself
-    this.handleRenderFromEvent()
 
     this.addCommand({
       id: 'insert-clojure-code-block',
@@ -132,8 +72,20 @@ export default class ObsidianClojure extends Plugin {
       }
     });
 
-
     this.addSettingTab(new ObsidianClojureSettingTab(this.app, this));
+
+    this.registerEvent(
+      this.app.workspace.on('layout-change', () => {
+        const markdownLeaves = this.app.workspace.getLeavesOfType('markdown')
+        const openMarkdownFilePaths = markdownLeaves.map(leaf => (leaf.view as MarkdownView).file.path)
+        const recentlyClosedMarkdownFilePaths = this.openMarkdownFilePaths.filter(path => !openMarkdownFilePaths.includes(path))
+        for (const path of recentlyClosedMarkdownFilePaths) {
+          // TODO This also gets triggered if a file is moved rather than closed which is not ideal
+          this.onFileClose(path)
+        }
+        this.openMarkdownFilePaths = openMarkdownFilePaths
+      })
+    )
 
     this.registerMarkdownPostProcessor((el, context) => {
       // `el` here is usually a section of a file. ``` blocks appear to always be one section. Inline code, however, can 
@@ -143,36 +95,33 @@ export default class ObsidianClojure extends Plugin {
         return
       }
 
-      const sourcePath = context.sourcePath
+      const path = context.sourcePath
       const sectionInfo = context.getSectionInfo(el)
       const markdown = sectionInfo.text
       const hash = sha256(markdown)
 
-      let documentEvaluation = this.documentEvaluations[sourcePath]
+      let documentEvaluation = this.documentEvaluations[path]
       if (documentEvaluation === undefined || documentEvaluation.hash !== hash) {
-        const evaluations = evaluate_v2(this.sciCtx, this.settings, markdown, { sanitizer: sanitizeHTMLToDom })
-        documentEvaluation = { hash: hash, codeBlockEvaluations: evaluations }
-        this.documentEvaluations[sourcePath] = documentEvaluation
+        // TODO If a code block is completely deleted the post-processing callback isn't triggered and we don't get an
+        //   opportunity to detach.
+        documentEvaluation?.detach()
+        const evaluations = evaluate_v2(this, this.sciCtx, this.settings, markdown, { sanitizer: sanitizeHTMLToDom })
+        documentEvaluation = new DocumentEvaluation(hash, evaluations)
+        this.documentEvaluations[path] = documentEvaluation
       }
 
-      for (const codeBlockEvaluation of documentEvaluation.codeBlockEvaluations) {
-        const codeBlock = codeBlockEvaluation.codeBlock
-        if (!codeBlock.isInline) {
-          if (codeBlock.lineStart == sectionInfo.lineStart && codeBlock.lineEnd == sectionInfo.lineEnd) {
-            codeBlockEvaluation.attach(el)
-            return
-          }
-        } else if (codeBlock.lineStart >= sectionInfo.lineStart && codeBlock.lineStart <= sectionInfo.lineEnd) {
-          codeBlockEvaluation.attach(el)
-        }
-      }
+      documentEvaluation.attach(el, sectionInfo)
     });
   }
 
+  private onFileClose(path: string) {
+    this.documentEvaluations[path]?.detach()
+  }
+
   async onunload() {
-    // Clean up our intervals + the function we expose
-    this.killCustomIntervals();
-    window.setIntervalTracked = undefined;
+    for (const documentEvaluation of Object.values(this.documentEvaluations)) {
+      documentEvaluation.detach()
+    }
   }
 
   async loadSettings() {
