@@ -118,10 +118,15 @@ export default class ObsidianClojure extends Plugin {
     this.documentEvaluations[path]?.detach()
   }
 
-  async onunload() {
+  public reset() {
     for (const documentEvaluation of Object.values(this.documentEvaluations)) {
       documentEvaluation.detach()
     }
+    this.documentEvaluations = {}
+  }
+
+  async onunload() {
+    this.reset()
   }
 
   async loadSettings() {
@@ -133,7 +138,6 @@ export default class ObsidianClojure extends Plugin {
   }
 }
 
-// TODO If settings change then reset evaluation cache
 class ObsidianClojureSettingTab extends PluginSettingTab {
   plugin: ObsidianClojure;
 
@@ -158,6 +162,7 @@ class ObsidianClojureSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.blockLanguage = value
             await this.plugin.saveSettings()
+            this.plugin.reset()
           })
       })
 
@@ -169,6 +174,7 @@ class ObsidianClojureSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.fullErrors = value
             await this.plugin.saveSettings()
+            this.plugin.reset()
           })
       })
 
