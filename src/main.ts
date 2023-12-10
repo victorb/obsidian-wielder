@@ -9,7 +9,7 @@ import {
 } from 'obsidian';
 import {initialize, evaluate, DocumentEvaluation} from './evaluator.ts'
 import CryptoJS from 'crypto-js';
-import { hasCode } from './elements.js';
+import { ElementsManager } from './elements.js';
 
 interface ObsidianClojureSettings {
   fullErrors: boolean
@@ -46,6 +46,8 @@ export default class ObsidianClojure extends Plugin {
   documentEvaluations: { [sourcePath: string]: DocumentEvaluation } = {};
 
   openMarkdownFilePaths: string[] = [];
+
+  public elements = new ElementsManager(this)
 
   async onload() {
     await this.loadSettings();
@@ -91,7 +93,7 @@ export default class ObsidianClojure extends Plugin {
       // `el` here is usually a section of a file. ``` blocks appear to always be one section. Inline code, however, can 
       // be surrounded by text, which may be on multiple lines.
 
-      if (!hasCode(this.settings.blockLanguage.toString(), el)) {
+      if (!this.elements.hasCodeDescendants(el)) {
         return
       }
 
@@ -110,7 +112,7 @@ export default class ObsidianClojure extends Plugin {
         documentEvaluation?.detach()
 
         const evaluations = evaluate(this, markdown, { sanitizer: sanitizeHTMLToDom })
-        documentEvaluation = new DocumentEvaluation(this.settings, hash, evaluations)
+        documentEvaluation = new DocumentEvaluation(this, hash, evaluations)
         this.documentEvaluations[path] = documentEvaluation
       }
 

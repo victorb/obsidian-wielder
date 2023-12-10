@@ -1,7 +1,6 @@
 import { MarkdownSectionInformation } from 'obsidian';
 import sci from '../lib/sci.js'
 import { IntervalsManager } from 'intervals.js';
-import { getCodeElements } from './elements.js';
 import ObsidianClojure from './main.js';
 
 export function initialize(global_object) {
@@ -24,12 +23,12 @@ interface CodeBlock {
 
 export class CodeBlockEvaluation {
   public codeBlock: CodeBlock
-  public el?: HTMLElement
+  public output?: string
+  public isError?: boolean
+  public renderFunction?: (resultsCodeEl: HTMLElement) => void
 
+  private el?: HTMLElement
   private plugin: ObsidianClojure
-  private output?: string
-  private isError?: boolean
-  private renderFunction?: (resultsCodeEl: HTMLElement) => void
   private _intervalsManager?: IntervalsManager
 
   constructor(plugin: ObsidianClojure, codeBlock: CodeBlock, opts: any) {
@@ -39,6 +38,7 @@ export class CodeBlockEvaluation {
   }
 
   public attach(el: HTMLElement) {
+    if (this.el === el) return
     this.el = el
     this.render()
   }
@@ -119,59 +119,12 @@ export class CodeBlockEvaluation {
     const el = this.el
     if (el == null) return
 
+
     if (this.codeBlock.isInline) {
-      this.renderInline()
-      return
-    }
-
-    const renderFunction = this.renderFunction
-
-    // Expects only one code block at a time.
-    const codeElement = el.querySelector('code')
-    const parentElement = codeElement.parentElement.parentElement;
-
-    // Might have existing wrapper we need to remove first
-    const possibleResults = parentElement.querySelector('.eval-results')
-    if (possibleResults) {
-      parentElement.removeChild(possibleResults)
-    }
-
-    const isSpecialRender = renderFunction != null
-    const $resultsWrapper = isSpecialRender ? document.createElement('div') : document.createElement('pre')
-    const $results = isSpecialRender ? document.createElement('div') : document.createElement('code')
-    $resultsWrapper.setAttribute('class', 'eval-results')
-
-    if (this.isError) {
-      $resultsWrapper.style.backgroundColor = 'red';
-      $resultsWrapper.style.color = 'white';
-      $results.style.backgroundColor = 'red';
-      $results.style.color = 'white';
-      $results.innerText = "ERROR: " + this.output
+      this.plugin.elements.renderInlineCode(this.el, this)
     } else {
-      if (isSpecialRender) {
-        renderFunction($results)
-      } else {
-        // TODO This could be a render function
-        $results.innerText = "=> " + sci.ppStr(this.output)
-      }
+      this.plugin.elements.renderCode(this.el, this)
     }
-
-    $resultsWrapper.appendChild($results)
-    parentElement.appendChild($resultsWrapper)
-  }
-
-  /**
-   * Does not support special render functions.
-   */
-  private renderInline() {
-    const codeElements = getCodeElements(this.plugin.settings.blockLanguage.toString(), this.el)
-    const codeElement = codeElements[this.codeBlock.inlineIndex]
-    codeElement.addClass('clojure-inline')
-    codeElement.setAttribute('data-clojure-source', this.codeBlock.source)
-    codeElement.innerText = this.output
-    codeElement.style.color = 'inherit'
-    codeElement.style.backgroundColor = 'inherit'
-    codeElement.style.fontSize = 'inherit'
   }
 }
 
@@ -180,10 +133,10 @@ export class DocumentEvaluation {
   public hash: string
   public codeBlockEvaluations: CodeBlockEvaluation[]
 
-  private settings: any
+  private plugin: ObsidianClojure
 
-  constructor(settings: any, hash: string, codeBlockEvaluations: CodeBlockEvaluation[]) {
-    this.settings = settings
+  constructor(plugin: ObsidianClojure, hash: string, codeBlockEvaluations: CodeBlockEvaluation[]) {
+    this.plugin = plugin
     this.hash = hash
     this.codeBlockEvaluations = codeBlockEvaluations
   }
@@ -220,36 +173,22 @@ export class DocumentEvaluation {
   /**
    * Attempt to rerender code elements that follow `el`.
    */
-  private renderFrom(el: HTMLElement, codeBlockIndex: number) {
-    el.onNodeInserted(() => {
-      const containerEl = el.parentElement
-      const parentCodeElements = getCodeElements(this.settings.blockLanguage, containerEl)
+  private renderFrom(sectionEl: HTMLElement, codeBlockIndex: number) {
+    // TODO If a parent element is already queued up then maybe we can skip this
+    this.plugin.elements.forEachSection(sectionEl, (sectionElement, codeElementSource) => {
+      const codeBlockEvaluation = this.codeBlockEvaluations[codeBlockIndex]
+      const codeBlock = codeBlockEvaluation.codeBlock
 
-      const codeElements = getCodeElements(this.settings.blockLanguage, el)
-      const lastCodeElement = codeElements[codeElements.length - 1]
-      let codeElementIndex = parentCodeElements.indexOf(lastCodeElement)
-
-      while (codeBlockIndex < this.codeBlockEvaluations.length && codeElementIndex < parentCodeElements.length) {
-        const codeElement = parentCodeElements[codeElementIndex] as HTMLElement
-        const codeElementSource = codeElement.hasAttribute('data-clojure-source') ? 
-          codeElement.getAttribute('data-clojure-source') : codeElement.innerText.trim()
-        const codeBlockEvaluation = this.codeBlockEvaluations[codeBlockIndex]
-        const codeBlock = codeBlockEvaluation.codeBlock
-
-        if (codeElementSource !== codeBlock.source) {
-          console.error(`Code blocks did not match at indexes ${codeElementIndex} and ${codeBlockIndex}.\nCode element source: ${codeElementSource}\nCode block source: ${codeBlock.source}`)
-          return
-        }
-
-        const el = codeElement.parentElement.parentElement
-        if (codeBlockEvaluation.el !== el) {
-          codeBlockEvaluation.attach(el)
-        }
-
-        codeBlockIndex++
-        codeElementIndex++
+      if (codeElementSource !== codeBlock.source) {
+        console.error(`Code blocks did not match at index ${codeBlockIndex}.\nCode element source: ${codeElementSource}\nCode block source: ${codeBlock.source}`)
+        return false
       }
-    }, true)
+
+      codeBlockEvaluation.attach(sectionElement)
+
+      codeBlockIndex++
+      return codeBlockIndex < this.codeBlockEvaluations.length
+    })
   }
 }
 
