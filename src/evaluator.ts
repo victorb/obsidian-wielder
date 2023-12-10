@@ -1,6 +1,8 @@
-import { MarkdownSectionInformation, Plugin } from 'obsidian';
+import { MarkdownSectionInformation } from 'obsidian';
 import sci from '../lib/sci.js'
 import { IntervalsManager } from 'intervals.js';
+import { getCodeElements } from './elements.js';
+import ObsidianClojure from './main.js';
 
 export function initialize(global_object) {
   return sci.init(global_object)
@@ -22,18 +24,18 @@ interface CodeBlock {
 
 export class CodeBlockEvaluation {
   public codeBlock: CodeBlock
+  public el?: HTMLElement
 
-  private plugin: Plugin
+  private plugin: ObsidianClojure
   private output?: string
   private isError?: boolean
   private renderFunction?: (resultsCodeEl: HTMLElement) => void
-  private el?: HTMLElement
   private _intervalsManager?: IntervalsManager
 
-  constructor(plugin: Plugin, codeBlock: CodeBlock, sciCtx: any, settings: any, opts: any) {
+  constructor(plugin: ObsidianClojure, codeBlock: CodeBlock, opts: any) {
     this.plugin = plugin
     this.codeBlock = codeBlock
-    this.eval(sciCtx, settings, opts)
+    this.eval(opts)
   }
 
   public attach(el: HTMLElement) {
@@ -53,7 +55,7 @@ export class CodeBlockEvaluation {
     return this._intervalsManager
   }
 
-  private eval(sciCtx: any, settings: any, opts: any) {
+  private eval(opts: any) {
     let sanitizer: any = null;
     if (opts && opts.sanitizer) {
       sanitizer = opts.sanitizer
@@ -92,11 +94,11 @@ export class CodeBlockEvaluation {
     let isError: boolean = false
 
     try {
-      output = sci.eval(sciCtx, this.codeBlock.source, sciArgs);
+      output = sci.eval(this.plugin.sciCtx, this.codeBlock.source, sciArgs);
     } catch (err) {
       console.error(err)
       console.trace()
-      if (settings.fullErrors) {
+      if (this.plugin.settings.fullErrors) {
         output = sci.ppStr(err)
       } else {
         output = err.message
@@ -162,7 +164,10 @@ export class CodeBlockEvaluation {
    * Does not support special render functions.
    */
   private renderInline() {
-    const codeElement = this.el.querySelectorAll('code')[this.codeBlock.inlineIndex]
+    const codeElements = getCodeElements(this.plugin.settings.blockLanguage.toString(), this.el)
+    const codeElement = codeElements[this.codeBlock.inlineIndex]
+    codeElement.addClass('clojure-inline')
+    codeElement.setAttribute('data-clojure-source', this.codeBlock.source)
     codeElement.innerText = this.output
     codeElement.style.color = 'inherit'
     codeElement.style.backgroundColor = 'inherit'
@@ -175,22 +180,34 @@ export class DocumentEvaluation {
   public hash: string
   public codeBlockEvaluations: CodeBlockEvaluation[]
 
-  constructor(hash: string, codeBlockEvaluations: CodeBlockEvaluation[]) {
+  private settings: any
+
+  constructor(settings: any, hash: string, codeBlockEvaluations: CodeBlockEvaluation[]) {
+    this.settings = settings
     this.hash = hash
     this.codeBlockEvaluations = codeBlockEvaluations
   }
 
   public attach(el: HTMLElement, sectionInfo: MarkdownSectionInformation) {
+    let codeBlockIndex = 0
+    let lastAttachedIndex: number | null = null
     for (const codeBlockEvaluation of this.codeBlockEvaluations) {
       const codeBlock = codeBlockEvaluation.codeBlock
       if (!codeBlock.isInline) {
         if (codeBlock.lineStart == sectionInfo.lineStart && codeBlock.lineEnd == sectionInfo.lineEnd) {
           codeBlockEvaluation.attach(el)
-          return
+          lastAttachedIndex = codeBlockIndex
+          break
         }
       } else if (codeBlock.lineStart >= sectionInfo.lineStart && codeBlock.lineStart <= sectionInfo.lineEnd) {
         codeBlockEvaluation.attach(el)
+        lastAttachedIndex = codeBlockIndex
       }
+      codeBlockIndex++
+    }
+
+    if (lastAttachedIndex != null) {
+      this.renderFrom(el, lastAttachedIndex)
     }
   }
 
@@ -199,22 +216,41 @@ export class DocumentEvaluation {
       evaluation.detach()
     }
   }
-}
 
-export function hasCode(lang: string, container: HTMLElement): boolean {
-  const codeElements = container.querySelectorAll('code')
-  for (const codeElement of codeElements) {
-    // Inline code
-    if (codeElement.innerText[0] === '|') {
-      return true
-    }
+  /**
+   * Attempt to rerender code elements that follow `el`.
+   */
+  private renderFrom(el: HTMLElement, codeBlockIndex: number) {
+    el.onNodeInserted(() => {
+      const containerEl = el.parentElement
+      const parentCodeElements = getCodeElements(this.settings.blockLanguage, containerEl)
 
-    const codeBlockLanguage = 'language-' + lang
-    if (codeElement.classList.contains(codeBlockLanguage)) {
-      return true
-    }
+      const codeElements = getCodeElements(this.settings.blockLanguage, el)
+      const lastCodeElement = codeElements[codeElements.length - 1]
+      let codeElementIndex = parentCodeElements.indexOf(lastCodeElement)
+
+      while (codeBlockIndex < this.codeBlockEvaluations.length && codeElementIndex < parentCodeElements.length) {
+        const codeElement = parentCodeElements[codeElementIndex] as HTMLElement
+        const codeElementSource = codeElement.hasAttribute('data-clojure-source') ? 
+          codeElement.getAttribute('data-clojure-source') : codeElement.innerText.trim()
+        const codeBlockEvaluation = this.codeBlockEvaluations[codeBlockIndex]
+        const codeBlock = codeBlockEvaluation.codeBlock
+
+        if (codeElementSource !== codeBlock.source) {
+          console.error(`Code blocks did not match at indexes ${codeElementIndex} and ${codeBlockIndex}.\nCode element source: ${codeElementSource}\nCode block source: ${codeBlock.source}`)
+          return
+        }
+
+        const el = codeElement.parentElement.parentElement
+        if (codeBlockEvaluation.el !== el) {
+          codeBlockEvaluation.attach(el)
+        }
+
+        codeBlockIndex++
+        codeElementIndex++
+      }
+    }, true)
   }
-  return false
 }
 
 function extractCodeBlocks(lang: string, markdown: string): CodeBlock[] {
@@ -261,12 +297,12 @@ function extractCodeBlocks(lang: string, markdown: string): CodeBlock[] {
   return codeBlocks;
 }
 
-export function evaluate(plugin: Plugin, sciCtx: any, settings: any, markdown: string, opts: any): CodeBlockEvaluation[] {
-  const lang = settings.blockLanguage.toString()
+export function evaluate(plugin: ObsidianClojure, markdown: string, opts: any): CodeBlockEvaluation[] {
+  const lang = plugin.settings.blockLanguage.toString()
   const codeBlocks = extractCodeBlocks(lang, markdown)
   const evaluations: CodeBlockEvaluation[] = [];
   for (const codeBlock of codeBlocks) {
-    const evaluation = new CodeBlockEvaluation(plugin, codeBlock, sciCtx, settings, opts)
+    const evaluation = new CodeBlockEvaluation(plugin, codeBlock, opts)
     evaluations.push(evaluation)
   }
   return evaluations

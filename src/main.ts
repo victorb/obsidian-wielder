@@ -7,10 +7,9 @@ import {
   sanitizeHTMLToDom,
   MarkdownView
 } from 'obsidian';
-
-import {initialize, hasCode, CodeBlockEvaluation, evaluate, DocumentEvaluation} from './evaluator.ts'
-
+import {initialize, evaluate, DocumentEvaluation} from './evaluator.ts'
 import CryptoJS from 'crypto-js';
+import { hasCode } from './elements.js';
 
 interface ObsidianClojureSettings {
   fullErrors: boolean
@@ -35,14 +34,14 @@ function sha256(message: string): string {
 }
 
 export default class ObsidianClojure extends Plugin {
-  settings: ObsidianClojureSettings;
+  public settings: ObsidianClojureSettings;
 
   eventsToListenTo: string[];
 
   // TODO need to get rid of this hack
   defaultTimeout: number;
 
-  sciCtx: any;
+  public sciCtx: any;
 
   documentEvaluations: { [sourcePath: string]: DocumentEvaluation } = {};
 
@@ -76,7 +75,8 @@ export default class ObsidianClojure extends Plugin {
 
     this.registerEvent(
       this.app.workspace.on('layout-change', () => {
-        const markdownLeaves = this.app.workspace.getLeavesOfType('markdown')
+        const markdownLeaves = this.app.workspace.getLeavesOfType('markdown');
+
         const openMarkdownFilePaths = markdownLeaves.map(leaf => (leaf.view as MarkdownView).file.path)
         const recentlyClosedMarkdownFilePaths = this.openMarkdownFilePaths.filter(path => !openMarkdownFilePaths.includes(path))
         for (const path of recentlyClosedMarkdownFilePaths) {
@@ -95,6 +95,9 @@ export default class ObsidianClojure extends Plugin {
         return
       }
 
+      // TODO Look into context.addChild and whether we could get a callback when the file is closed, for example
+      //   It might be a good spot to kill intervals
+
       const path = context.sourcePath
       const sectionInfo = context.getSectionInfo(el)
       const markdown = sectionInfo.text
@@ -105,8 +108,9 @@ export default class ObsidianClojure extends Plugin {
         // TODO If a code block is completely deleted the post-processing callback isn't triggered and we don't get an
         //   opportunity to detach.
         documentEvaluation?.detach()
-        const evaluations = evaluate(this, this.sciCtx, this.settings, markdown, { sanitizer: sanitizeHTMLToDom })
-        documentEvaluation = new DocumentEvaluation(hash, evaluations)
+
+        const evaluations = evaluate(this, markdown, { sanitizer: sanitizeHTMLToDom })
+        documentEvaluation = new DocumentEvaluation(this.settings, hash, evaluations)
         this.documentEvaluations[path] = documentEvaluation
       }
 
@@ -158,7 +162,7 @@ class ObsidianClojureSettingTab extends PluginSettingTab {
       .setDesc('What language should the code-block be set to for us to evaluate it?')
       .addText((text) => {
         text.setPlaceholder('clojure')
-          .setValue(this.plugin.settings.blockLanguage)
+          .setValue(this.plugin.settings.blockLanguage.toString())
           .onChange(async (value) => {
             this.plugin.settings.blockLanguage = value
             await this.plugin.saveSettings()
