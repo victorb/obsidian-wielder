@@ -1,6 +1,6 @@
 import { MarkdownSectionInformation, MarkdownView, sanitizeHTMLToDom } from 'obsidian';
 import sci from '../lib/sci.js'
-import { IntervalsManager } from 'src/intervals.js';
+import { IntervalsManager } from './intervals.js';
 import ObsidianClojure from './main.js';
 import CryptoJS from 'crypto-js';
 
