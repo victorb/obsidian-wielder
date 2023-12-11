@@ -41,6 +41,7 @@ If you don't want to install the plugin before seeing it in action, you can chec
 The main pieces are the following files:
 
 - `sci-js/src/sci/api.cljs` - ClojureScript file which provides a JS<>CLJS interface to be used by this plugin
+- `src/elements.ts` - TypeScript source for managing DOM elements.
 - `src/evaluator.ts` - TypeScript source for initializing the SCI environment and evaluating code snippets from DOM elements
 - `src/main.ts` - Obsidian Plugin's main source file. Is what gets compiled into `main.js` and published as the plugin
 - `src/publish.ts` - Source of the publisher part. Include the compiled version of this library and your published site will work (mostly) the same way as your vault when loaded via desktop Obsidian.
