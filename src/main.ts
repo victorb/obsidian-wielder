@@ -7,9 +7,8 @@ import {
   sanitizeHTMLToDom,
   MarkdownView
 } from 'obsidian';
-import {initialize, evaluate, DocumentEvaluation} from './evaluator.ts'
-import CryptoJS from 'crypto-js';
 import { ElementsManager } from './elements.js';
+import { ClojureEvaluator } from './evaluator.js'
 
 interface ObsidianClojureSettings {
   fullErrors: boolean
@@ -41,18 +40,15 @@ export default class ObsidianClojure extends Plugin {
   // TODO need to get rid of this hack
   defaultTimeout: number;
 
-  public sciCtx: any;
+  public elements: ElementsManager
 
-  documentEvaluations: { [sourcePath: string]: DocumentEvaluation } = {};
-
-  openMarkdownFilePaths: string[] = [];
-
-  public elements = new ElementsManager(this)
+  public evaluator: ClojureEvaluator
 
   async onload() {
     await this.loadSettings();
 
-    this.sciCtx = initialize(window)
+    this.elements = new ElementsManager(this)
+    this.evaluator = new ClojureEvaluator(this)
 
     this.addCommand({
       id: 'insert-clojure-code-block',
@@ -75,20 +71,6 @@ export default class ObsidianClojure extends Plugin {
 
     this.addSettingTab(new ObsidianClojureSettingTab(this.app, this));
 
-    this.registerEvent(
-      this.app.workspace.on('layout-change', () => {
-        const markdownLeaves = this.app.workspace.getLeavesOfType('markdown');
-
-        const openMarkdownFilePaths = markdownLeaves.map(leaf => (leaf.view as MarkdownView).file.path)
-        const recentlyClosedMarkdownFilePaths = this.openMarkdownFilePaths.filter(path => !openMarkdownFilePaths.includes(path))
-        for (const path of recentlyClosedMarkdownFilePaths) {
-          // TODO This also gets triggered if a file is moved rather than closed which is not ideal
-          this.onFileClose(path)
-        }
-        this.openMarkdownFilePaths = openMarkdownFilePaths
-      })
-    )
-
     this.registerMarkdownPostProcessor((el, context) => {
       // `el` here is usually a section of a file. ``` blocks appear to always be one section. Inline code, however, can 
       // be surrounded by text, which may be on multiple lines.
@@ -103,36 +85,16 @@ export default class ObsidianClojure extends Plugin {
       const path = context.sourcePath
       const sectionInfo = context.getSectionInfo(el)
       const markdown = sectionInfo.text
-      const hash = sha256(markdown)
 
-      let documentEvaluation = this.documentEvaluations[path]
-      if (documentEvaluation === undefined || documentEvaluation.hash !== hash) {
-        // TODO If a code block is completely deleted the post-processing callback isn't triggered and we don't get an
-        //   opportunity to detach.
-        documentEvaluation?.detach()
-
-        const evaluations = evaluate(this, markdown, { sanitizer: sanitizeHTMLToDom })
-        documentEvaluation = new DocumentEvaluation(this, hash, evaluations)
-        this.documentEvaluations[path] = documentEvaluation
-      }
-
+      const documentEvaluation = this.evaluator.evaluate(path, markdown)
       documentEvaluation.attach(el, sectionInfo)
     });
   }
 
-  private onFileClose(path: string) {
-    this.documentEvaluations[path]?.detach()
-  }
-
-  public reset() {
-    for (const documentEvaluation of Object.values(this.documentEvaluations)) {
-      documentEvaluation.detach()
-    }
-    this.documentEvaluations = {}
-  }
-
   async onunload() {
-    this.reset()
+    this.elements = null
+    this.evaluator.clear()
+    this.evaluator = null
   }
 
   async loadSettings() {
@@ -141,6 +103,7 @@ export default class ObsidianClojure extends Plugin {
 
   async saveSettings() {
     await this.saveData(this.settings);
+    this.evaluator.clear()
   }
 }
 
@@ -168,7 +131,6 @@ class ObsidianClojureSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.blockLanguage = value
             await this.plugin.saveSettings()
-            this.plugin.reset()
           })
       })
 
@@ -180,7 +142,6 @@ class ObsidianClojureSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.fullErrors = value
             await this.plugin.saveSettings()
-            this.plugin.reset()
           })
       })
 

@@ -8,8 +8,8 @@ export class IntervalsManager {
     this.plugin = plugin
   }
 
-  public setInterval(func: any, intervalMs: number): number {
-    const intervalId = window.setInterval(func, intervalMs)
+  public setInterval(handler: TimerHandler, intervalMs: number): number {
+    const intervalId = window.setInterval(handler, intervalMs)
     this.plugin.registerInterval(intervalId)
     this.activeIntervals.push(intervalId)
     return intervalId
