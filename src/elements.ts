@@ -111,7 +111,7 @@ export class ElementsManager {
 
   private isCode(codeElement: HTMLElement): boolean {
     // Unrendered inline code--rendering replaces the inner text with the code output.
-    if (codeElement.innerText[0] === '|') return true
+    if (codeElement.innerText[0] == '|' && codeElement.innerText.length > 1) return true
 
     // Rendered inline code. Doesn't contain the '|' anymore but has a special attribute set.
     if (codeElement.hasAttribute(INLINE_CODE_ELEMENT_SOURCE_ATTRIBUTE_NAME)) return true

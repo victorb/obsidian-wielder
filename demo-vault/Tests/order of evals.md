@@ -4,7 +4,7 @@
 (.setTimeout js/window
 	(fn []
 		(def my-name "Victor")
-		(*renderText #'my-name))
+		(*renderText my-name))
 	2000)
 ```
 
