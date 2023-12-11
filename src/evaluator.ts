@@ -36,11 +36,11 @@ function extractCodeBlocks(lang: string, markdown: string): CodeBlock[] {
 
   for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      if (line.match(`^\`\`\`${lang}(\s|$)`)) {
+      if (line.match(`^\`\`\`${lang}(\\s|$)`)) {
           isInCodeBlock = true;
           blockStartLine = i;
           currentBlock = '';
-      } else if (line.match(`^\`\`\`(\s|$)`) && isInCodeBlock) {
+      } else if (line.match(/^```(\s|$)/) && isInCodeBlock) {
           isInCodeBlock = false;
           codeBlocks.push({ 
             source: currentBlock.trim(),
