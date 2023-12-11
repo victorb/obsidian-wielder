@@ -4,8 +4,6 @@ import {
   PluginSettingTab,
   Setting,
   Editor,
-  sanitizeHTMLToDom,
-  MarkdownView
 } from 'obsidian';
 import { ElementsManager } from './elements.js';
 import { ClojureEvaluator } from './evaluator.js'
@@ -26,10 +24,6 @@ return `\`\`\`clojure
 ${toBeWrapped}
 \`\`\`
 `
-}
-
-function sha256(message: string): string {
-  return CryptoJS.SHA256(message).toString()
 }
 
 export default class ObsidianClojure extends Plugin {
