@@ -29,7 +29,6 @@ export class WorkspaceWrapper {
           if (view.getMode() === 'preview') {
             view.previewMode.rerender(true)
           }
-          return
         }
       }
     }
