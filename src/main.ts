@@ -6,7 +6,10 @@ import {
   Editor,
 } from 'obsidian';
 import { ElementsManager } from './elements.js';
-import { ClojureEvaluator } from './evaluator.js'
+import { ClojureEvaluator, DocumentEvaluation } from './evaluator.js'
+import { VaultWrapper } from './vault.js';
+import { WorkspaceWrapper } from './workspace.js';
+import { Logger } from './logger.js';
 
 interface ObsidianClojureSettings {
   fullErrors: boolean
@@ -34,13 +37,20 @@ export default class ObsidianClojure extends Plugin {
   // TODO need to get rid of this hack
   defaultTimeout: number;
 
+  public log = new Logger()
+
   public elements: ElementsManager
 
   public evaluator: ClojureEvaluator
 
+  public vaultWrapper: VaultWrapper
+  public workspaceWrapper: WorkspaceWrapper
+
   async onload() {
     await this.loadSettings();
 
+    this.vaultWrapper = new VaultWrapper(this)
+    this.workspaceWrapper = new WorkspaceWrapper(this)
     this.elements = new ElementsManager(this)
     this.evaluator = new ClojureEvaluator(this)
 
@@ -65,6 +75,10 @@ export default class ObsidianClojure extends Plugin {
 
     this.addSettingTab(new ObsidianClojureSettingTab(this.app, this));
 
+    this.evaluator.setDocumentEvaluatedListener((documentEvaluation) => {
+      this.workspaceWrapper.rerender(documentEvaluation.path)
+    })
+
     this.registerMarkdownPostProcessor((el, context) => {
       // `el` here is usually a section of a file. ``` blocks appear to always be one section. Inline code, however, can 
       // be surrounded by text, which may be on multiple lines.
@@ -76,12 +90,15 @@ export default class ObsidianClojure extends Plugin {
       // TODO Look into context.addChild and whether we could get a callback when the file is closed, for example
       //   It might be a good spot to kill intervals
 
-      const path = context.sourcePath
-      const sectionInfo = context.getSectionInfo(el)
-      const markdown = sectionInfo.text
-
-      const documentEvaluation = this.evaluator.evaluate(path, markdown)
-      documentEvaluation.attach(el, sectionInfo)
+      this.evaluator.evaluate(context.sourcePath, (documentEvaluation, cached) => {
+        if (cached) {
+          documentEvaluation.attach(el, context.getSectionInfo(el))
+        } else {
+          // If the document evaluation wasn't cached then we expect a call to our DocumentEvaluatedListener which will
+          // trigger a rerender. Each section of the document will then be processed by this Markdown post-processor
+          // once more, and the documentation evaluation will be cached.
+        }
+      })
     });
   }
 

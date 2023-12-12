@@ -58,38 +58,6 @@ export class ElementsManager {
     codeElement.style.backgroundColor = 'inherit'
     codeElement.style.fontSize = 'inherit'
   }
-  
-  /**
-   * @param callback return true to keep going, false to end the "loop".
-   */
-  public forEachSection(
-    fromSectionElement: HTMLElement,
-    callback: (sectionElement: HTMLElement, codeElementSource: string) => boolean
-  ) {
-    // TODO If a parent element is already queued up then maybe we can skip this
-    fromSectionElement.onNodeInserted(() => {
-      const viewEl = fromSectionElement.parentElement
-      const documentCodeElements = this.plugin.elements.getCodeElements(viewEl)
-
-      // This is necessary for inline code since a section can contain multiple inline code elements.
-      const fromSectionCodeElements = this.plugin.elements.getCodeElements(fromSectionElement)
-      const lastFromCodeElement = fromSectionCodeElements[fromSectionCodeElements.length - 1]
-
-      let codeElementIndex = documentCodeElements.indexOf(lastFromCodeElement)
-
-      while (codeElementIndex < documentCodeElements.length) {
-        const codeElement = documentCodeElements[codeElementIndex] as HTMLElement
-        const codeElementSource = codeElement.getAttribute(INLINE_CODE_ELEMENT_SOURCE_ATTRIBUTE_NAME) || codeElement.innerText.trim()
-        const sectionElement = codeElement.parentElement.parentElement
-
-        if (!callback(sectionElement, codeElementSource)) {
-          break
-        }
-
-        codeElementIndex++
-      }
-    }, true)
-  }
 
   public hasCodeDescendants(container: HTMLElement): boolean {
     for (const codeElement of container.querySelectorAll('code')) {

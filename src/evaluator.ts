@@ -1,4 +1,4 @@
-import { MarkdownSectionInformation, MarkdownView, sanitizeHTMLToDom } from 'obsidian';
+import { MarkdownSectionInformation, MarkdownView, TFile, getLinkpath, parseFrontMatterStringArray, parseYaml, sanitizeHTMLToDom } from 'obsidian';
 import sci from '../lib/sci.js'
 import { IntervalsManager } from './intervals.js';
 import ObsidianClojure from './main.js';
@@ -76,6 +76,7 @@ export class ClojureEvaluator {
   private plugin: ObsidianClojure
   private sciContext: any;
   private openMarkdownFilePaths: string[] = [];
+  private documentEvaluatedListener: (documentEvaluation: DocumentEvaluation) => void | null = null
   private documentEvaluations: { [sourcePath: string]: DocumentEvaluation } = {};
 
   constructor(plugin: ObsidianClojure) {
@@ -97,19 +98,13 @@ export class ClojureEvaluator {
     )
   }
 
-  public evaluate(documentPath: string, documentMarkdown: string): DocumentEvaluation {
-    const hash = sha256(documentMarkdown)
-    let documentEvaluation = this.documentEvaluations[documentPath]
-    if (documentEvaluation === undefined || documentEvaluation.hash !== hash) {
-      // TODO If a code block is completely deleted the post-processing callback isn't triggered and we don't get an
-      //   opportunity to detach.
-      documentEvaluation?.detach()
+  public setDocumentEvaluatedListener(listener: (documentEvaluation: DocumentEvaluation) => void) {
+    this.documentEvaluatedListener = listener
+  }
 
-      const evaluations = this.evaluateDocument(documentMarkdown, { sanitizer: sanitizeHTMLToDom })
-      documentEvaluation = new DocumentEvaluation(this.plugin, hash, evaluations)
-      this.documentEvaluations[documentPath] = documentEvaluation
-    }
-    return documentEvaluation
+  public async evaluate(path: string, callback?: (documentEvaluation: DocumentEvaluation, cached: boolean) => void) {
+    const file = this.plugin.vaultWrapper.getFile(path)
+    this.evaluateFile(file, callback)
   }
 
   public evaluateSource(source: string, callbacks: EvalCallbacks) {
@@ -142,7 +137,33 @@ export class ClojureEvaluator {
     this.documentEvaluations = {}
   }
 
-  private evaluateDocument(markdown: string, opts: any): CodeBlockEvaluation[] {
+  private async evaluateFile(file: TFile, callback?: (documentEvaluation: DocumentEvaluation, cached: boolean) => void) {
+    const path = file.path
+    const markdown = await file.vault.cachedRead(file)
+    const hash = sha256(markdown)
+
+    let documentEvaluation = this.documentEvaluations[file.path]
+    const cached = documentEvaluation != null && documentEvaluation.hash === hash
+    if (!cached) {
+      // TODO If a code block is completely deleted the post-processing callback isn't triggered and we don't get an
+      //   opportunity to detach.
+      documentEvaluation?.detach()
+
+      const evaluations = await this.evaluateMarkdown(markdown, { sanitizer: sanitizeHTMLToDom })
+      documentEvaluation = new DocumentEvaluation(path, hash, evaluations)
+      this.documentEvaluations[path] = documentEvaluation
+
+      if (this.documentEvaluatedListener != null) {
+        this.documentEvaluatedListener(documentEvaluation)
+      }
+    }
+
+    if (callback != null) {
+      callback(documentEvaluation, cached)
+    }
+  }
+
+  private async evaluateMarkdown(markdown: string, opts: any): Promise<CodeBlockEvaluation[]> {
     const lang = this.plugin.settings.blockLanguage.toString()
     const codeBlocks = extractCodeBlocks(lang, markdown)
     const evaluations: CodeBlockEvaluation[] = [];
@@ -253,38 +274,30 @@ export class CodeBlockEvaluation {
 }
 
 export class DocumentEvaluation {
+  public path: string
   /** From the last time the document was evaluated. */
   public hash: string
   public codeBlockEvaluations: CodeBlockEvaluation[]
 
-  private plugin: ObsidianClojure
-
-  constructor(plugin: ObsidianClojure, hash: string, codeBlockEvaluations: CodeBlockEvaluation[]) {
-    this.plugin = plugin
+  constructor(path: string, hash: string, codeBlockEvaluations: CodeBlockEvaluation[]) {
+    this.path = path
     this.hash = hash
     this.codeBlockEvaluations = codeBlockEvaluations
   }
 
   public attach(el: HTMLElement, sectionInfo: MarkdownSectionInformation) {
     let codeBlockIndex = 0
-    let lastAttachedIndex: number | null = null
     for (const codeBlockEvaluation of this.codeBlockEvaluations) {
       const codeBlock = codeBlockEvaluation.codeBlock
       if (!codeBlock.isInline) {
         if (codeBlock.lineStart == sectionInfo.lineStart && codeBlock.lineEnd == sectionInfo.lineEnd) {
           codeBlockEvaluation.attach(el)
-          lastAttachedIndex = codeBlockIndex
           break
         }
       } else if (codeBlock.lineStart >= sectionInfo.lineStart && codeBlock.lineStart <= sectionInfo.lineEnd) {
         codeBlockEvaluation.attach(el)
-        lastAttachedIndex = codeBlockIndex
       }
       codeBlockIndex++
-    }
-
-    if (lastAttachedIndex != null) {
-      this.renderFrom(el, lastAttachedIndex)
     }
   }
 
@@ -292,26 +305,5 @@ export class DocumentEvaluation {
     for (const evaluation of this.codeBlockEvaluations) {
       evaluation.detach()
     }
-  }
-
-  /**
-   * Attempt to rerender code elements that follow `el`.
-   */
-  private renderFrom(sectionEl: HTMLElement, codeBlockIndex: number) {
-    // TODO If a parent element is already queued up then maybe we can skip this
-    this.plugin.elements.forEachSection(sectionEl, (sectionElement, codeElementSource) => {
-      const codeBlockEvaluation = this.codeBlockEvaluations[codeBlockIndex]
-      const codeBlock = codeBlockEvaluation.codeBlock
-
-      if (codeElementSource !== codeBlock.source) {
-        console.error(`Code blocks did not match at index ${codeBlockIndex}.\nCode element source: ${codeElementSource}\nCode block source: ${codeBlock.source}`)
-        return false
-      }
-
-      codeBlockEvaluation.attach(sectionElement)
-
-      codeBlockIndex++
-      return codeBlockIndex < this.codeBlockEvaluations.length
-    })
   }
 }
