@@ -20,7 +20,7 @@ export class WorkspaceWrapper {
     }
   }
 
-  private rerenderSync(documentPath: string) {
+  private async rerenderSync(documentPath: string) {
     const markdownLeaves = this.plugin.app.workspace.getLeavesOfType('markdown')
     for (const leaf of markdownLeaves) {
       const view = leaf.view
@@ -28,6 +28,14 @@ export class WorkspaceWrapper {
         if (view.file.path === documentPath) {
           if (view.getMode() === 'preview') {
             view.previewMode.rerender(true)
+
+            // TODO Remove once this issue is fixed:
+            // https://forum.obsidian.md/t/markdownview-previewmode-rerender-true-hides-note-title-and-properties-from-reading-view/72974/5
+            const state = view.getState()
+            state.mode = 'source'
+            await view.setState(state, { history: false })
+            state.mode = 'preview'
+            await view.setState(state, { history: false })
           }
         }
       }
