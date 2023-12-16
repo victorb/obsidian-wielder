@@ -29,42 +29,39 @@ function sha256(message: string): string {
 
 function extractCodeBlocks(lang: string, markdown: string): CodeBlock[] {
   const lines = markdown.split('\n');
-  const codeBlocks: CodeBlock[] = [];
-  let isInCodeBlock = false;
-  let currentBlock = '';
-  let blockStartLine = 0;
+  const codeBlocks: CodeBlock[] = []
+  let isInCodeBlock = false
+  let currentBlock = ''
+  let blockStartLine = 0
 
   for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      if (line.match(`^\`\`\`${lang}(\\s|$)`)) {
-          isInCodeBlock = true;
-          blockStartLine = i;
-          currentBlock = '';
-      } else if (line.match(/^```(\s|$)/) && isInCodeBlock) {
-          isInCodeBlock = false;
-          codeBlocks.push({ 
-            source: currentBlock.trim(),
-            lineStart: blockStartLine,
-            lineEnd: i,
-            isInline: false
-          });
-      } else if (isInCodeBlock) {
-          currentBlock += line + '\n';
-      } else {
-        // Handling inline code
-        const inlineRegex = /`\|([^`]+)`/g
-        let inlineMatch
-        let inlineIndex = 0
-        while ((inlineMatch = inlineRegex.exec(line)) !== null) {
-            codeBlocks.push({ 
-                source: inlineMatch[1].trim(), 
-                lineStart: i, 
-                lineEnd: i,
-                isInline: true,
-                inlineIndex
-            })
-            inlineIndex++
-        }
+    const line = lines[i];
+    if (line.match(`^\`\`\`${lang}(\\s|$)`)) {
+      isInCodeBlock = true;
+      blockStartLine = i;
+      currentBlock = '';
+    } else if (line.match(/^```(\s|$)/) && isInCodeBlock) {
+      isInCodeBlock = false;
+      codeBlocks.push({
+        source: currentBlock.trim(),
+        lineStart: blockStartLine,
+        lineEnd: i,
+        isInline: false
+      });
+    } else if (isInCodeBlock) {
+      currentBlock += line + '\n';
+    } else {
+      // Handling inline code
+      const inlineRegex = /`\|([^`]+)`/g
+      let inlineMatch
+      while ((inlineMatch = inlineRegex.exec(line)) !== null) {
+        codeBlocks.push({
+          source: inlineMatch[1].trim(),
+          lineStart: i,
+          lineEnd: i,
+          isInline: true
+        })
+      }
     }
   }
 
@@ -184,7 +181,6 @@ interface CodeBlock {
   lineStart: number
   lineEnd: number
   isInline: boolean
-  inlineIndex?: number
 }
 
 export class CodeBlockEvaluation {
@@ -192,6 +188,7 @@ export class CodeBlockEvaluation {
   public output?: string
   public isError?: boolean
   public renderFunction?: (resultsCodeEl: HTMLElement) => void
+  public sectionIndex: number = 0
 
   private el?: HTMLElement
   private plugin: ObsidianClojure
@@ -286,7 +283,7 @@ export class DocumentEvaluation {
   }
 
   public attach(el: HTMLElement, sectionInfo: MarkdownSectionInformation) {
-    let codeBlockIndex = 0
+    let sectionCodeIndex = 0
     for (const codeBlockEvaluation of this.codeBlockEvaluations) {
       const codeBlock = codeBlockEvaluation.codeBlock
       if (!codeBlock.isInline) {
@@ -295,9 +292,10 @@ export class DocumentEvaluation {
           break
         }
       } else if (codeBlock.lineStart >= sectionInfo.lineStart && codeBlock.lineStart <= sectionInfo.lineEnd) {
+        codeBlockEvaluation.sectionIndex = sectionCodeIndex
+        sectionCodeIndex++
         codeBlockEvaluation.attach(el)
       }
-      codeBlockIndex++
     }
   }
 

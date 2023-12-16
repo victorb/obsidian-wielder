@@ -50,7 +50,7 @@ export class ElementsManager {
 
   public renderInlineCode(sectionElement: HTMLElement, evaluation: CodeBlockEvaluation) {
     const codeElements = this.getCodeElements(sectionElement)
-    const codeElement = codeElements[evaluation.codeBlock.inlineIndex]
+    const codeElement = codeElements[evaluation.sectionIndex]
 
     codeElement.setAttribute(INLINE_CODE_ELEMENT_SOURCE_ATTRIBUTE_NAME, evaluation.codeBlock.source)
     codeElement.innerText = evaluation.output
