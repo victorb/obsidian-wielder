@@ -77,6 +77,10 @@ export default class ObsidianClojure extends Plugin {
 
     this.evaluator.setDocumentEvaluatedListener((documentEvaluation) => {
       this.workspaceWrapper.rerender(documentEvaluation.path)
+      const dependents = this.evaluator.getDependents(documentEvaluation.path)
+      for (const dependent of dependents) {
+        this.evaluator.evaluate(dependent, true)
+      }
     })
 
     this.registerMarkdownPostProcessor((el, context) => {
@@ -90,7 +94,7 @@ export default class ObsidianClojure extends Plugin {
       // TODO Look into context.addChild and whether we could get a callback when the file is closed, for example
       //   It might be a good spot to kill intervals
 
-      this.evaluator.evaluate(context.sourcePath, (documentEvaluation, cached) => {
+      this.evaluator.evaluate(context.sourcePath, false, (documentEvaluation, cached) => {
         if (cached) {
           documentEvaluation.attach(el, context.getSectionInfo(el))
         } else {

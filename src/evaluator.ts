@@ -75,6 +75,8 @@ export class ClojureEvaluator {
   private openMarkdownFilePaths: string[] = [];
   private documentEvaluatedListener: (documentEvaluation: DocumentEvaluation) => void | null = null
   private documentEvaluations: { [sourcePath: string]: DocumentEvaluation } = {};
+  private dependencies: { [path: string]: string[] } = {}
+  private opts = { sanitizer: sanitizeHTMLToDom }
 
   constructor(plugin: ObsidianClojure) {
     this.plugin = plugin
@@ -99,9 +101,9 @@ export class ClojureEvaluator {
     this.documentEvaluatedListener = listener
   }
 
-  public async evaluate(path: string, callback?: (documentEvaluation: DocumentEvaluation, cached: boolean) => void) {
+  public async evaluate(path: string, force: boolean, callback?: (documentEvaluation: DocumentEvaluation, cached: boolean) => void) {
     const file = this.plugin.vaultWrapper.getFile(path)
-    this.evaluateFile(file, callback)
+    this.evaluateFile(file, force, callback)
   }
 
   public evaluateSource(source: string, callbacks: EvalCallbacks) {
@@ -127,6 +129,16 @@ export class ClojureEvaluator {
     }
   }
 
+  public getDependents(path: string): string[] {
+    const dependents = []
+    for (const [dependent, dependencies] of Object.entries(this.dependencies)) {
+      if (dependencies.contains(path)) {
+        dependents.push(dependent)
+      }
+    }
+    return dependents
+  }
+
   public clear() {
     for (const documentEvaluation of Object.values(this.documentEvaluations)) {
       documentEvaluation.detach()
@@ -134,19 +146,35 @@ export class ClojureEvaluator {
     this.documentEvaluations = {}
   }
 
-  private async evaluateFile(file: TFile, callback?: (documentEvaluation: DocumentEvaluation, cached: boolean) => void) {
+  private async evaluateFile(file: TFile, force: boolean, callback?: (documentEvaluation: DocumentEvaluation, cached: boolean) => void) {
     const path = file.path
     const markdown = await file.vault.cachedRead(file)
     const hash = sha256(markdown)
 
     let documentEvaluation = this.documentEvaluations[file.path]
-    const cached = documentEvaluation != null && documentEvaluation.hash === hash
+    const cached = !force && documentEvaluation != null && documentEvaluation.hash === hash
     if (!cached) {
       // TODO If a code block is completely deleted the post-processing callback isn't triggered and we don't get an
       //   opportunity to detach.
       documentEvaluation?.detach()
 
-      const evaluations = await this.evaluateMarkdown(markdown, { sanitizer: sanitizeHTMLToDom })
+      const dependencies = this.getDependencies(markdown)
+      const dependencyPaths = dependencies.map(file => file.path)
+      this.dependencies[path] = dependencyPaths
+
+      // TODO Got to store dependencies here before stuff starts to be evaluated
+      for (const dependency of dependencies) {
+        await this.evaluateFile(dependency, false)
+      }
+
+      const lang = this.plugin.settings.blockLanguage.toString()
+      const codeBlocks = extractCodeBlocks(lang, markdown)
+      const evaluations: CodeBlockEvaluation[] = []
+      for (const codeBlock of codeBlocks) {
+        const evaluation = new CodeBlockEvaluation(this.plugin, codeBlock, this.opts)
+        evaluations.push(evaluation)
+      }
+
       documentEvaluation = new DocumentEvaluation(path, hash, evaluations)
       this.documentEvaluations[path] = documentEvaluation
 
@@ -160,15 +188,23 @@ export class ClojureEvaluator {
     }
   }
 
-  private async evaluateMarkdown(markdown: string, opts: any): Promise<CodeBlockEvaluation[]> {
-    const lang = this.plugin.settings.blockLanguage.toString()
-    const codeBlocks = extractCodeBlocks(lang, markdown)
-    const evaluations: CodeBlockEvaluation[] = [];
-    for (const codeBlock of codeBlocks) {
-      const evaluation = new CodeBlockEvaluation(this.plugin, codeBlock, opts)
-      evaluations.push(evaluation)
+  private getDependencies(markdown: string): TFile[] {
+    let dependencies: string[] = []
+    const match = markdown.match(/^---\s*\n(.+?)\n---\s*\n/s)
+    if (match != null) {
+      const yamlStr = match[1]
+      const yaml = parseYaml(yamlStr)
+      if (yaml.require != null) {
+        if (Array.isArray(yaml.require)) {
+          dependencies = yaml.require
+        } else if (typeof yaml.require === 'string') {
+          dependencies.push(yaml.require)
+        }
+      }
     }
-    return evaluations
+    return dependencies
+      .map(dependency => dependency.match(/^\[\[.+\]\]$/) ? dependency.slice(2, -2) : dependency)
+      .map(dependency => this.plugin.app.metadataCache.getFirstLinkpathDest(dependency, ''))
   }
 
   private onFileClose(path: string) {
