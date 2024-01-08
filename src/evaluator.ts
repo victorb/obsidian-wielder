@@ -71,17 +71,24 @@ function extractCodeBlocks(lang: string, markdown: string): CodeBlock[] {
 export class ClojureEvaluator {
 
   private plugin: ObsidianClojure
-  private sciContext: any;
-  private openMarkdownFilePaths: string[] = [];
+  private sciContext: any
+  private openMarkdownFilePaths: string[] = []
   private documentEvaluatedListener: (documentEvaluation: DocumentEvaluation) => void | null = null
-  private documentEvaluations: { [sourcePath: string]: DocumentEvaluation } = {};
+  private documentEvaluations: { [sourcePath: string]: Promise<DocumentEvaluation> } = {}
   private dependencies: { [path: string]: string[] } = {}
   private opts = { sanitizer: sanitizeHTMLToDom }
+
+  private evaluationQueue: { path: string, force: boolean, promise: Promise<[DocumentEvaluation, cached: boolean]> }[] = []
 
   constructor(plugin: ObsidianClojure) {
     this.plugin = plugin
 
-    this.sciContext = initialize(window)
+    const bindings = {
+      'get-file': (path: string) => plugin.vaultWrapper.getFile(path),
+      'read-file': (file: TFile) => plugin.app.vault.read(file),
+      'read': (path: string) => plugin.app.vault.read(plugin.vaultWrapper.getFile(path))
+    }
+    this.sciContext = sci.init(window, bindings)
 
     plugin.registerEvent(
       plugin.app.workspace.on('layout-change', () => {
@@ -101,17 +108,40 @@ export class ClojureEvaluator {
     this.documentEvaluatedListener = listener
   }
 
-  public async evaluate(path: string, force: boolean, callback?: (documentEvaluation: DocumentEvaluation, cached: boolean) => void) {
-    const file = this.plugin.vaultWrapper.getFile(path)
-    this.evaluateFile(file, force, callback)
+  public evaluate(path: string, force: boolean): Promise<[DocumentEvaluation, cached: boolean]> {
+    const queuedEvaluation = this.evaluationQueue.find(e => e.path === path && e.force === force)
+    if (queuedEvaluation != null) return queuedEvaluation.promise
+
+    let promise: Promise<[DocumentEvaluation, cached: boolean]>
+    promise = new Promise(async (resolve, _) => {
+      const originFile = this.plugin.vaultWrapper.getFile(path)
+      const executionList = await this.getOrderedExecutionList(originFile)
+      this.dependencies[path] = executionList.map(file => file.path)
+      this.dependencies[path].remove(originFile.path)
+
+      for (const file of executionList) {
+        if (originFile !== file) {
+          await this.maybeEvaluateFile(file, false)
+        }
+      }
+
+      resolve(await this.maybeEvaluateFile(originFile, force))
+    })
+    
+    const queueObject = { path, force, promise }
+
+    this.evaluationQueue.push(queueObject)
+    promise.then((_) => this.evaluationQueue.remove(queueObject))
+
+    return promise
   }
 
-  public evaluateSource(source: string, callbacks: EvalCallbacks) {
+  public evaluateSource(source: string, callbacks: EvalCallbacks, current: Record<string, Literal>) {
     let output: string = ''
     let isError: boolean = false
 
     try {
-      output = sci.eval(this.sciContext, source, callbacks)
+      output = sci.eval(this.sciContext, source, callbacks, current)
     } catch (err) {
       console.error(err)
       console.trace()
@@ -139,56 +169,78 @@ export class ClojureEvaluator {
     return dependents
   }
 
-  public clear() {
+  public async clear() {
     for (const documentEvaluation of Object.values(this.documentEvaluations)) {
-      documentEvaluation.detach()
+      (await documentEvaluation).detach()
     }
     this.documentEvaluations = {}
+
+    for (const o of this.evaluationQueue) {
+      (await o.promise)[0].detach()
+    }
+    this.evaluationQueue = []
+
+    this.dependencies = {}
   }
 
-  private async evaluateFile(file: TFile, force: boolean, callback?: (documentEvaluation: DocumentEvaluation, cached: boolean) => void) {
+  private async maybeEvaluateFile(file: TFile, force: boolean): Promise<[DocumentEvaluation, cached: boolean]> {
     const path = file.path
+    console.log(`${path}: Evaluation request received.`)
     const markdown = await file.vault.cachedRead(file)
     const hash = sha256(markdown)
 
-    let documentEvaluation = this.documentEvaluations[file.path]
-    const cached = !force && documentEvaluation != null && documentEvaluation.hash === hash
-    if (!cached) {
-      // TODO If a code block is completely deleted the post-processing callback isn't triggered and we don't get an
-      //   opportunity to detach.
-      documentEvaluation?.detach()
-
-      const dependencies = this.getDependencies(markdown)
-      const dependencyPaths = dependencies.map(file => file.path)
-      this.dependencies[path] = dependencyPaths
-
-      // TODO Got to store dependencies here before stuff starts to be evaluated
-      for (const dependency of dependencies) {
-        await this.evaluateFile(dependency, false)
+    let evaluate = false
+    const promise = this.documentEvaluations[file.path]
+    if (promise == null) {
+      console.log(`${path}: No cached evaluation found.`)
+      evaluate = true
+    } else {
+      const documentEvaluation = await promise
+      if (documentEvaluation.hash === hash) {
+        if (force) console.log(`${path}: Cache is up to date, but evaluation is forced.`)
+        else console.log(`${path}: Cache is up to date.`)
+      } else {
+        console.log(`${path}: Cache is outdated.`)
       }
 
-      const lang = this.plugin.settings.blockLanguage.toString()
-      const codeBlocks = extractCodeBlocks(lang, markdown)
-      const evaluations: CodeBlockEvaluation[] = []
-      for (const codeBlock of codeBlocks) {
-        const evaluation = new CodeBlockEvaluation(this.plugin, codeBlock, this.opts)
-        evaluations.push(evaluation)
-      }
-
-      documentEvaluation = new DocumentEvaluation(path, hash, evaluations)
-      this.documentEvaluations[path] = documentEvaluation
-
-      if (this.documentEvaluatedListener != null) {
-        this.documentEvaluatedListener(documentEvaluation)
-      }
+      evaluate = force || documentEvaluation.hash !== hash
+        // TODO If a code block is completely deleted the post-processing callback isn't triggered and we don't get an
+        //   opportunity to detach.
+      if (evaluate) documentEvaluation?.detach()
     }
 
-    if (callback != null) {
-      callback(documentEvaluation, cached)
+    if (evaluate) {
+      console.log(`${path}: Queueing evaluation.`)
+      this.documentEvaluations[path] = this.evaluateFile(path, hash, markdown)
     }
+
+    return [await this.documentEvaluations[path], !evaluate]
   }
 
-  private getDependencies(markdown: string): TFile[] {
+  private async evaluateFile(path: string, hash: string, markdown: string) {
+    const label = `${path}: Evaluated in`
+    console.time(label)
+
+    const lang = this.plugin.settings.blockLanguage.toString()
+    const codeBlocks = extractCodeBlocks(lang, markdown)
+    const evaluations: CodeBlockEvaluation[] = []
+    for (const codeBlock of codeBlocks) {
+      const evaluation = new CodeBlockEvaluation(this.plugin, codeBlock, this.opts, path)
+      evaluations.push(evaluation)
+    }
+
+    const documentEvaluation = new DocumentEvaluation(path, hash, evaluations)
+
+    console.timeEnd(label)
+
+    if (this.documentEvaluatedListener != null) {
+      this.documentEvaluatedListener(documentEvaluation)
+    }
+
+    return documentEvaluation
+  }
+
+  private getDependenciesFromMarkdown(markdown: string): TFile[] {
     let dependencies: string[] = []
     const match = markdown.match(/^---\s*\n(.+?)\n---\s*\n/s)
     if (match != null) {
@@ -207,8 +259,40 @@ export class ClojureEvaluator {
       .map(dependency => this.plugin.app.metadataCache.getFirstLinkpathDest(dependency, ''))
   }
 
-  private onFileClose(path: string) {
-    this.documentEvaluations[path]?.detach()
+  private async getDependenciesFromFile(file: TFile): Promise<TFile[]> {
+    const markdown = await file.vault.cachedRead(file)
+    return this.getDependenciesFromMarkdown(markdown)
+  }
+
+  /**
+   * Will throw an error if there are circular dependencies.
+   * @param file The file to recursively get dependent files for.
+   * @returns An ordered list of files, including the file parameter and all its dependencies.
+   */
+  private async getOrderedExecutionList(file: TFile): Promise<TFile[]> {
+    const visited: TFile[] = []
+    const graph: TFile[][] = []
+    const visitQueue = [file]
+    while (visitQueue.length > 0) {
+      const nextFile = visitQueue.pop()
+      visited.push(nextFile)
+      const nextDeps = await this.getDependenciesFromFile(nextFile)
+      nextDeps.forEach((dep) => {
+        graph.push([dep, nextFile])
+        if (!visited.includes(dep)) {
+          visitQueue.push(dep)
+        }
+      })
+    }
+    if (graph.length == 0) {
+      return [file]
+    } else {
+      return toposort(graph)
+    }
+  }
+
+  private async onFileClose(path: string) {
+    (await this.documentEvaluations[path])?.detach()
   }
 }
 
@@ -230,14 +314,14 @@ export class CodeBlockEvaluation {
   private plugin: ObsidianClojure
   private _intervalsManager?: IntervalsManager
 
-  constructor(plugin: ObsidianClojure, codeBlock: CodeBlock, opts: any) {
+  constructor(plugin: ObsidianClojure, codeBlock: CodeBlock, opts: any, path: string) {
     this.plugin = plugin
     this.codeBlock = codeBlock
-    this.eval(opts)
+    this.eval(opts, path)
   }
 
   public attach(el: HTMLElement) {
-    if (this.el === el) return
+    // TODO What if this.el === el ? Can we optimize?
     this.el = el
     this.render()
   }
@@ -254,12 +338,18 @@ export class CodeBlockEvaluation {
     return this._intervalsManager
   }
 
-  private eval(opts: any) {
+  private eval(opts: any, path: string) {
     const sanitizer = opts?.sanitizer || defaultSanitize
 
     const callbacks: EvalCallbacks = {
       onRenderText: (info: any) => {
         this.setRenderFunction((r) => r.innerText = info)
+      },
+      onRenderMarkdown: (info: any) => {
+        this.setRenderFunction((r) => {
+          // TODO Use the view component instead of the plugin?
+          MarkdownRenderer.renderMarkdown(info, r, path, this.plugin)
+        })
       },
       onRenderHTML: (info: any) => {
         this.setRenderFunction((r) => r.appendChild(sanitizer(info)))
@@ -280,10 +370,19 @@ export class CodeBlockEvaluation {
       },
       onSetInterval: (handler: TimerHandler, intervalMs: number) => {
         this.intervalsManager().setInterval(handler, intervalMs)
+      },
+      onChart: (data: any) => {
+        if ('renderChart' in window) {
+          this.setRenderFunction(r => (window as any).renderChart(data, r))
+        } else {
+          this.output = 'The Obsidian Charts plugin must be installed to use the chart function.'
+          this.isError = true
+          this.render()
+        }
       }
     }
 
-    const result = this.plugin.evaluator.evaluateSource(this.codeBlock.source, callbacks)
+    const result = this.plugin.evaluator.evaluateSource(this.codeBlock.source, callbacks, getAPI().page(path))
 
     this.output = result.output
     this.isError = result.isError
@@ -320,18 +419,25 @@ export class DocumentEvaluation {
 
   public attach(el: HTMLElement, sectionInfo: MarkdownSectionInformation) {
     let sectionCodeIndex = 0
+    let attached = false
     for (const codeBlockEvaluation of this.codeBlockEvaluations) {
       const codeBlock = codeBlockEvaluation.codeBlock
       if (!codeBlock.isInline) {
         if (codeBlock.lineStart == sectionInfo.lineStart && codeBlock.lineEnd == sectionInfo.lineEnd) {
           codeBlockEvaluation.attach(el)
+          attached = true
           break
         }
       } else if (codeBlock.lineStart >= sectionInfo.lineStart && codeBlock.lineStart <= sectionInfo.lineEnd) {
         codeBlockEvaluation.sectionIndex = sectionCodeIndex
         sectionCodeIndex++
         codeBlockEvaluation.attach(el)
+        attached = true
       }
+    }
+
+    if (!attached) {
+      console.error(`${this.path}: Failed to find a code block to attach to element`, el, sectionInfo)
     }
   }
 

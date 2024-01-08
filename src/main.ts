@@ -9,7 +9,6 @@ import { ElementsManager } from './elements.js';
 import { ClojureEvaluator, DocumentEvaluation } from './evaluator.js'
 import { VaultWrapper } from './vault.js';
 import { WorkspaceWrapper } from './workspace.js';
-import { Logger } from './logger.js';
 
 interface ObsidianClojureSettings {
   fullErrors: boolean
@@ -36,8 +35,6 @@ export default class ObsidianClojure extends Plugin {
 
   // TODO need to get rid of this hack
   defaultTimeout: number;
-
-  public log = new Logger()
 
   public elements: ElementsManager
 
@@ -73,15 +70,29 @@ export default class ObsidianClojure extends Plugin {
       }
     });
 
+    this.addCommand({
+      id: 'evaluate-all',
+      name: 'Evaluate All',
+      callback: () => {
+        this.evaluator.clear()
+        this.workspaceWrapper.rerenderMarkdownPreviews()
+      }
+    })
+
     this.addSettingTab(new ObsidianClojureSettingTab(this.app, this));
 
     this.evaluator.setDocumentEvaluatedListener((documentEvaluation) => {
+      // TODO We rerender in order to ensure that all Clojure code block results are up to date. 
+      // Ideally, we wouldn't rerender the whole page, only the code results.
       this.workspaceWrapper.rerender(documentEvaluation.path)
-      const dependents = this.evaluator.getDependents(documentEvaluation.path)
-      for (const dependent of dependents) {
-        this.evaluator.evaluate(dependent, true)
-      }
+      // TODO Only if they're open
+      // const dependents = this.evaluator.getDependents(documentEvaluation.path)
+      // for (const dependent of dependents) {
+        //this.evaluator.evaluate(dependent, true)
+      // }
     })
+
+    // TODO Look into using obsidian.parseLinkText
 
     this.registerMarkdownPostProcessor((el, context) => {
       // `el` here is usually a section of a file. ``` blocks appear to always be one section. Inline code, however, can 
@@ -94,15 +105,19 @@ export default class ObsidianClojure extends Plugin {
       // TODO Look into context.addChild and whether we could get a callback when the file is closed, for example
       //   It might be a good spot to kill intervals
 
-      this.evaluator.evaluate(context.sourcePath, false, (documentEvaluation, cached) => {
-        if (cached) {
-          documentEvaluation.attach(el, context.getSectionInfo(el))
-        } else {
-          // If the document evaluation wasn't cached then we expect a call to our DocumentEvaluatedListener which will
-          // trigger a rerender. Each section of the document will then be processed by this Markdown post-processor
-          // once more, and the documentation evaluation will be cached.
-        }
-      })
+      console.log(`${context.sourcePath}: Requesting evaluation from Markdown post-processor.`)
+
+      this.evaluator
+        .evaluate(context.sourcePath, false)
+        .then(([documentEvaluation, cached]) => {
+          if (cached) {
+            documentEvaluation.attach(el, context.getSectionInfo(el))
+          } else {
+            // If the document evaluation wasn't cached then we expect a call to our DocumentEvaluatedListener which will
+            // trigger a rerender. Each section of the document will then be processed by this Markdown post-processor
+            // once more, and the documentation evaluation will be cached.
+          }
+        })
     });
   }
 

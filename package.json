@@ -11,20 +11,24 @@
   "author": "Victor Bjelkholm",
   "license": "MIT",
   "devDependencies": {
+    "@types/crypto-js": "^4.2.0",
     "@types/node": "^16.11.6",
+    "@types/toposort": "^2.0.7",
     "@typescript-eslint/eslint-plugin": "^5.2.0",
     "@typescript-eslint/parser": "^5.2.0",
-    "@types/crypto-js": "^4.2.0",
     "builtin-modules": "^3.2.0",
     "esbuild": "0.13.12",
     "obsidian": "latest",
+    "obsidian-dataview": "^0.5.64",
     "tslib": "2.3.1",
     "typescript": "4.4.4"
   },
   "dependencies": {
+    "@js-joda/core": "^5.6.1",
+    "crypto-js": "^4.2.0",
     "react": "^18.1.0",
     "react-dom": "^18.1.0",
     "sanitizer-polyfill": "github:mozilla/sanitizer-polyfill#a1d64d48dd4349ab851b73e6019922c564208ed9",
-    "crypto-js": "^4.2.0"
+    "toposort": "^2.0.2"
   }
 }
